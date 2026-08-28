@@ -1,0 +1,30 @@
+{
+  "name": "master-loot",
+  "version": "0.1.0",
+  "description": "Owlbear Rodeo extension for immersive, WoW-style loot with beautifully rendered letters, books and journals.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "author": "shiro",
+  "license": "MIT",
+  "dependencies": {
+    "@fontsource/caveat": "^5.2.8",
+    "@fontsource/cinzel": "^5.2.8",
+    "@fontsource/dancing-script": "^5.2.8",
+    "@fontsource/great-vibes": "^5.2.8",
+    "@fontsource/homemade-apple": "^5.2.8",
+    "@fontsource/im-fell-english": "^5.2.6",
+    "@fontsource/medievalsharp": "^5.2.8",
+    "@fontsource/pirata-one": "^5.2.8",
+    "@fontsource/shadows-into-light": "^5.2.8",
+    "@fontsource/uncial-antiqua": "^5.2.7",
+    "@owlbear-rodeo/sdk": "^3.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5"
+  }
+}

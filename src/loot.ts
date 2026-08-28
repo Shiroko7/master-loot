@@ -1,0 +1,296 @@
+import OBR, { buildImage, type Image, type Item } from "@owlbear-rodeo/sdk";
+import {
+  BADGE_KEY,
+  DOC_MODAL_ID,
+  EDITOR_MODAL_ID,
+  LOOT_KEY,
+  LOOT_POPOVER_ID,
+  SETTINGS_KEY,
+  SPARKLE_KEY,
+} from "./constants";
+import { buildSparkle } from "./sparkle";
+import { saveBackup } from "./storage";
+import { isLootContainer, type LootContainer } from "./types";
+
+export function getLoot(item: Item): LootContainer | undefined {
+  const meta = item.metadata[LOOT_KEY];
+  return isLootContainer(meta) ? meta : undefined;
+}
+
+export function isBadge(item: Item): boolean {
+  return BADGE_KEY in item.metadata;
+}
+
+export function isSparkle(item: Item): boolean {
+  return SPARKLE_KEY in item.metadata;
+}
+
+export async function getToken(tokenId: string): Promise<Item | undefined> {
+  const items = await OBR.scene.items.getItems([tokenId]);
+  return items[0];
+}
+
+export async function saveLoot(
+  tokenId: string,
+  loot: LootContainer,
+): Promise<void> {
+  loot.updatedAt = Date.now();
+  // Write a detached copy: the SDK runs updates through immer, which
+  // deep-freezes the produced state. Assigning `loot` itself would freeze
+  // the caller's live object and silently break every edit after the
+  // first save.
+  const snapshot = structuredClone(loot);
+  await OBR.scene.items.updateItems([tokenId], (items) => {
+    for (const item of items) {
+      item.metadata[LOOT_KEY] = snapshot;
+    }
+  });
+  try {
+    saveBackup(OBR.room.id, tokenId, loot);
+  } catch (error) {
+    // A full localStorage must never fail the real save above.
+    console.warn("Master Loot: localStorage backup failed", error);
+  }
+}
+
+// --- room settings ----------------------------------------------------------
+
+interface RoomSettings {
+  badgeCorner?: unknown;
+  badgeImage?: unknown;
+}
+
+async function getSettings(): Promise<RoomSettings> {
+  const metadata = await OBR.room.getMetadata();
+  const settings = metadata[SETTINGS_KEY];
+  return typeof settings === "object" && settings !== null
+    ? (settings as RoomSettings)
+    : {};
+}
+
+/** Merge into the settings object so one setting never clobbers another. */
+async function patchSettings(patch: RoomSettings): Promise<void> {
+  const current = await getSettings();
+  await OBR.room.setMetadata({ [SETTINGS_KEY]: { ...current, ...patch } });
+}
+
+function defaultBadgeUrl(): string {
+  return new URL("/loot-badge.svg", window.location.origin).href;
+}
+
+/**
+ * Resolve a GM-entered badge image (absolute URL or a path like
+ * /my-badge.png served from the extension) to an absolute http(s) URL.
+ * Anything empty or unusable falls back to the built-in sack.
+ */
+export function resolveBadgeImage(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return defaultBadgeUrl();
+  try {
+    const url = new URL(trimmed, window.location.origin);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.href;
+  } catch {
+    // fall through to the default
+  }
+  return defaultBadgeUrl();
+}
+
+function badgeMime(url: string): string {
+  const path = url.split("?")[0].toLowerCase();
+  if (path.endsWith(".svg")) return "image/svg+xml";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".webp")) return "image/webp";
+  return "image/png";
+}
+
+/** Raw badge-image setting as the GM typed it; "" means the built-in sack. */
+export async function getBadgeImageSetting(): Promise<string> {
+  const { badgeImage } = await getSettings();
+  return typeof badgeImage === "string" ? badgeImage : "";
+}
+
+export async function setBadgeImage(value: string): Promise<void> {
+  await patchSettings({ badgeImage: value.trim() || undefined });
+}
+
+/** Immediately swap every badge in the scene to the given image. */
+export async function restyleBadges(url: string): Promise<void> {
+  if (!(await OBR.scene.isReady())) return;
+  const items = await OBR.scene.items.getItems();
+  const badges = items.filter(isBadge).map((badge) => badge.id);
+  if (badges.length === 0) return;
+  const mime = badgeMime(url);
+  await OBR.scene.items.updateItems(badges, (updates) => {
+    for (const item of updates) {
+      const image = (item as Image).image;
+      image.url = url;
+      image.mime = mime;
+    }
+  });
+}
+
+export type BadgeCorner =
+  | "top-right"
+  | "top-left"
+  | "bottom-right"
+  | "bottom-left";
+
+export const BADGE_CORNERS: readonly BadgeCorner[] = [
+  "top-right",
+  "top-left",
+  "bottom-right",
+  "bottom-left",
+];
+
+/** Room-wide badge corner preference; defaults to top-right. */
+export async function getBadgeCorner(): Promise<BadgeCorner> {
+  const { badgeCorner } = await getSettings();
+  return BADGE_CORNERS.includes(badgeCorner as BadgeCorner)
+    ? (badgeCorner as BadgeCorner)
+    : "top-right";
+}
+
+export async function setBadgeCorner(corner: BadgeCorner): Promise<void> {
+  await patchSettings({ badgeCorner: corner });
+}
+
+/** Immediately move every badge in the scene into the given corner. */
+export async function resnapBadges(corner: BadgeCorner): Promise<void> {
+  if (!(await OBR.scene.isReady())) return;
+  const items = await OBR.scene.items.getItems();
+  const moves = new Map<string, { x: number; y: number }>();
+  for (const badge of items.filter(isBadge)) {
+    if (!badge.attachedTo) continue;
+    moves.set(badge.id, await badgePosition(badge.attachedTo, corner));
+  }
+  if (moves.size === 0) return;
+  await OBR.scene.items.updateItems([...moves.keys()], (updates) => {
+    for (const item of updates) {
+      const pos = moves.get(item.id);
+      if (pos) item.position = { x: pos.x, y: pos.y };
+    }
+  });
+}
+
+/** Expected badge anchor: just inside the chosen corner of the token. */
+export async function badgePosition(
+  tokenId: string,
+  corner: BadgeCorner,
+): Promise<{ x: number; y: number }> {
+  const [bounds, dpi] = await Promise.all([
+    OBR.scene.items.getItemBounds([tokenId]),
+    OBR.scene.grid.getDpi(),
+  ]);
+  const inset = dpi * 0.18;
+  return {
+    x: corner.includes("right") ? bounds.max.x - inset : bounds.min.x + inset,
+    y: corner.includes("bottom") ? bounds.max.y - inset : bounds.min.y + inset,
+  };
+}
+
+async function attachBadge(tokenId: string): Promise<void> {
+  const url = resolveBadgeImage(await getBadgeImageSetting());
+  const badge = buildImage(
+    // Rendered size is width/dpi grid cells, so 128/256 is half a cell.
+    { url, mime: badgeMime(url), width: 128, height: 128 },
+    { dpi: 256, offset: { x: 64, y: 64 } },
+  )
+    .attachedTo(tokenId)
+    .layer("ATTACHMENT")
+    .position(await badgePosition(tokenId, await getBadgeCorner()))
+    .locked(false)
+    .name("Loot")
+    .metadata({ [BADGE_KEY]: true })
+    .disableAttachmentBehavior(["SCALE", "ROTATION"])
+    .build();
+  await OBR.scene.items.addItems([badge]);
+}
+
+async function attachSparkle(tokenId: string): Promise<void> {
+  const bounds = await OBR.scene.items.getItemBounds([tokenId]);
+  await OBR.scene.items.addItems([buildSparkle(tokenId, bounds)]);
+}
+
+async function findAttachments(
+  tokenId: string,
+  match: (item: Item) => boolean,
+): Promise<Item[]> {
+  const attachments = await OBR.scene.items.getItemAttachments([tokenId]);
+  return attachments.filter((a) => match(a) && a.attachedTo === tokenId);
+}
+
+/** Make the badge + sparkle attachments match the loot's enabled state. */
+export async function syncBadge(
+  tokenId: string,
+  enabled: boolean,
+): Promise<void> {
+  const [badges, sparkles] = await Promise.all([
+    findAttachments(tokenId, isBadge),
+    findAttachments(tokenId, isSparkle),
+  ]);
+  if (enabled) {
+    if (badges.length === 0) await attachBadge(tokenId);
+    if (sparkles.length === 0) await attachSparkle(tokenId);
+  } else {
+    const stale = [...badges, ...sparkles];
+    if (stale.length > 0) {
+      await OBR.scene.items.deleteItems(stale.map((i) => i.id));
+    }
+  }
+}
+
+export interface PopoverAnchor {
+  elementId?: string;
+  position?: { left: number; top: number };
+}
+
+export async function openLootPopover(
+  tokenId: string,
+  anchor: PopoverAnchor = {},
+): Promise<void> {
+  await OBR.popover.open({
+    id: LOOT_POPOVER_ID,
+    url: `/loot.html?token=${encodeURIComponent(tokenId)}`,
+    width: 340,
+    height: 460,
+    hidePaper: true,
+    anchorElementId: anchor.elementId,
+    anchorPosition: anchor.position,
+    anchorReference: anchor.position ? "POSITION" : "ELEMENT",
+    anchorOrigin: { horizontal: "CENTER", vertical: "BOTTOM" },
+    transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
+  });
+}
+
+/** Anchor position roughly centered in the viewport. */
+export async function centerAnchor(): Promise<{ left: number; top: number }> {
+  const [width, height] = await Promise.all([
+    OBR.viewport.getWidth(),
+    OBR.viewport.getHeight(),
+  ]);
+  return { left: width / 2, top: height / 4 };
+}
+
+export async function openEditorModal(tokenId: string): Promise<void> {
+  await OBR.modal.open({
+    id: EDITOR_MODAL_ID,
+    url: `/editor.html?token=${encodeURIComponent(tokenId)}`,
+    width: 980,
+    height: 660,
+    hidePaper: true,
+  });
+}
+
+export async function openDocumentModal(
+  tokenId: string,
+  docId: string,
+  size: { width: number; height: number } = { width: 1100, height: 820 },
+): Promise<void> {
+  await OBR.modal.open({
+    id: DOC_MODAL_ID,
+    url: `/document.html?token=${encodeURIComponent(tokenId)}&doc=${encodeURIComponent(docId)}`,
+    width: size.width,
+    height: size.height,
+    hidePaper: true,
+  });
+}

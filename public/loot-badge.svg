@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="55%" r="50%">
+      <stop offset="0%" stop-color="#ffd66b" stop-opacity="0.85"/>
+      <stop offset="45%" stop-color="#ffb62e" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#ffb62e" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="body" cx="36%" cy="30%" r="85%">
+      <stop offset="0%" stop-color="#e2ad66"/>
+      <stop offset="40%" stop-color="#bd8443"/>
+      <stop offset="78%" stop-color="#84551f"/>
+      <stop offset="100%" stop-color="#5f3a11"/>
+    </radialGradient>
+    <linearGradient id="flap" x1="0.2" y1="0" x2="0.7" y2="1">
+      <stop offset="0%" stop-color="#d29a5a"/>
+      <stop offset="60%" stop-color="#a0703a"/>
+      <stop offset="100%" stop-color="#77501f"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="66" r="57" fill="url(#glow)"/>
+  <g transform="rotate(-4 64 72)">
+    <!-- plump body -->
+    <path d="M50 48 C34 54 25 70 25 86 C25 104 42 116 64 116 C86 116 103 104 103 86 C103 70 94 54 78 48 Q64 43 50 48 Z"
+          fill="url(#body)" stroke="#251503" stroke-width="5" stroke-linejoin="round"/>
+    <!-- soft leather sheen -->
+    <ellipse cx="47" cy="72" rx="14" ry="18" fill="#f4d194" opacity="0.4" transform="rotate(-20 47 72)"/>
+    <!-- dark right rim for depth -->
+    <path d="M92 58 C101 70 101 92 86 105 C97 92 98 72 92 58 Z" fill="#3f2409" opacity="0.35"/>
+    <!-- big floppy folded-over mouth -->
+    <path d="M46 45 C40 30 50 17 63 17 C60 23 61 28 66 30 C72 20 90 22 93 34 C95 43 88 50 78 51 L55 52 Z"
+          fill="url(#flap)" stroke="#251503" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M70 32 C76 27 85 28 88 34" fill="none" stroke="#4a2e0e" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
+    <path d="M52 44 C56 36 63 32 71 33" fill="none" stroke="#4a2e0e" stroke-width="2.5" stroke-linecap="round" opacity="0.45"/>
+    <!-- crossed red tie cords -->
+    <path d="M47 50 Q64 58 81 49" fill="none" stroke="#5c0e08" stroke-width="8" stroke-linecap="round"/>
+    <path d="M47 50 Q64 58 81 49" fill="none" stroke="#a82214" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M49 55 Q64 47 79 54" fill="none" stroke="#5c0e08" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <path d="M49 55 Q64 47 79 54" fill="none" stroke="#c03322" stroke-width="3.2" stroke-linecap="round"/>
+    <!-- cord ends hanging down the bag, knotted tips -->
+    <path d="M76 55 q8 8 5 18 M70 56 q1 9 -4 16" fill="none" stroke="#a82214" stroke-width="3.4" stroke-linecap="round"/>
+    <path d="M76 55 q8 8 5 18 M70 56 q1 9 -4 16" fill="none" stroke="#5c0e08" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="81" cy="74" r="3" fill="#a82214" stroke="#3a0c05" stroke-width="1.6"/>
+    <circle cx="66" cy="73" r="2.7" fill="#a82214" stroke="#3a0c05" stroke-width="1.6"/>
+  </g>
+</svg>

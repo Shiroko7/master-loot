@@ -1,0 +1,711 @@
+/*
+ * Immersive paper rendering for letters, scrolls, books and journals.
+ * Sizing model:
+ *   --zoom scales the paper itself (its font-size drives every em unit),
+ *   --font-scale scales only the text for readability.
+ */
+
+.paper-stage {
+  --font-scale: 1;
+  --zoom: 1;
+  padding: 2.5rem 1.5rem 4rem;
+  display: flex;
+  justify-content: safe center;
+  min-width: fit-content;
+}
+
+.paper {
+  font-size: calc(16px * var(--zoom, 1));
+  width: 38em;
+  flex-shrink: 0;
+  padding: 3.2em 3.6em 4.2em;
+  position: relative;
+  color: #2c2418;
+  box-shadow:
+    0 1.4em 2.8em rgba(0, 0, 0, 0.55),
+    0 0.2em 0.6em rgba(0, 0, 0, 0.35);
+}
+
+/* Paper fiber noise overlay */
+.paper::after,
+.id-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.36 0 0 0 0 0.22 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/*
+ * Typeface comes from the document's chosen font (--doc-font/--font-adjust,
+ * set inline by the renderer); each paper style below only adds decoration.
+ */
+.paper-title {
+  margin: 0 0 1em;
+  font-weight: 600;
+  font-family: var(--doc-font, serif);
+  font-size: calc(1.45em * var(--font-scale, 1) * var(--font-adjust, 1));
+}
+
+.paper-body {
+  font-family: var(--doc-font, serif);
+  font-size: calc(1.15em * var(--font-scale, 1) * var(--font-adjust, 1));
+  line-height: 1.55;
+  overflow-wrap: break-word;
+}
+
+.paper-body p {
+  margin: 0 0 0.9em;
+}
+
+/*
+ * Editorial note (*wrapped in asterisks*): the narrator's voice describing
+ * the object, not ink written on it — a neutral serif, never the document's
+ * hand. Dividing by --font-adjust undoes the script font's optical boost.
+ */
+.paper-body .paper-note {
+  font-family: Georgia, "Palatino Linotype", "Times New Roman", serif;
+  font-style: italic;
+  font-size: calc(0.92em / var(--font-adjust, 1));
+  line-height: 1.5;
+  text-align: center;
+  color: rgba(80, 68, 50, 0.92);
+}
+
+/* ---------------------------------------------------------------- letter */
+
+.paper-letter {
+  background: radial-gradient(
+    120% 100% at 20% 0%,
+    #f7eed6 0%,
+    #f0e2c0 55%,
+    #e2cea2 100%
+  );
+  border-radius: 4px;
+  transform: rotate(-0.35deg);
+}
+
+/* Ink smudges and old stains */
+.paper-letter::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(6em 4.5em at 82% 10%, rgba(150, 110, 40, 0.16), transparent 70%),
+    radial-gradient(5em 5em at 8% 88%, rgba(120, 80, 30, 0.18), transparent 70%),
+    radial-gradient(2.5em 2.5em at 90% 76%, rgba(120, 80, 30, 0.12), transparent 70%);
+}
+
+.paper-letter .paper-title {
+  border-bottom: 1px solid rgba(90, 60, 20, 0.3);
+  padding-bottom: 0.25em;
+  color: #3a2c15;
+}
+
+.paper-letter .paper-body {
+  line-height: 1.45;
+  color: #33281a;
+}
+
+/* ---------------------------------------------------------------- scroll */
+
+.paper-scroll {
+  background: linear-gradient(
+    180deg,
+    #c9ab6e 0%,
+    #e0c68f 7%,
+    #e8d2a0 50%,
+    #ddc289 93%,
+    #c3a262 100%
+  );
+  border-radius: 6px;
+  margin-top: 1.4em;
+  margin-bottom: 1.4em;
+}
+
+.paper-scroll .roll {
+  position: absolute;
+  left: -1em;
+  right: -1em;
+  height: 2.2em;
+  border-radius: 1.1em;
+  background: linear-gradient(180deg, #a3823f, #ecd9a8 45%, #6f5526);
+  box-shadow: 0 0.3em 0.8em rgba(0, 0, 0, 0.45);
+}
+
+.paper-scroll .roll-top {
+  top: -1.1em;
+}
+
+.paper-scroll .roll-bottom {
+  bottom: -1.1em;
+}
+
+.paper-scroll .paper-title {
+  text-align: center;
+  letter-spacing: 0.06em;
+  color: #43310f;
+}
+
+.paper-scroll .paper-body {
+  color: #3b2d10;
+}
+
+/* ------------------------------------------------------------------ book */
+
+.paper-book {
+  background: linear-gradient(160deg, #f5ebd2, #eee2c2);
+  /* leather binding around the page */
+  box-shadow:
+    0 0 0 1.1em #4a2f1a,
+    0 0 0 1.25em #2c1c0d,
+    0 1.6em 3em rgba(0, 0, 0, 0.6);
+  margin: 1.6em;
+}
+
+.paper-book::before {
+  content: "";
+  position: absolute;
+  inset: 0.9em;
+  pointer-events: none;
+  border: 1px solid rgba(160, 120, 40, 0.4);
+}
+
+.paper-book .paper-title {
+  text-align: center;
+  letter-spacing: 0.08em;
+  color: #58421c;
+}
+
+.paper-book .paper-body {
+  text-align: justify;
+  hyphens: auto;
+  color: #241d12;
+}
+
+/* Drop cap on the first *written* paragraph (editorial notes don't count). */
+.paper-book .paper-body > :nth-child(1 of p:not(.paper-note))::first-letter {
+  font-family: "Cinzel", serif;
+  font-size: 3em;
+  float: left;
+  line-height: 0.8;
+  padding: 0.08em 0.12em 0 0;
+  color: #7a1f1f;
+}
+
+/* --------------------------------------------------------------- journal */
+
+/*
+ * A well-thumbed personal diary: mottled tan pages inside a dark, worn
+ * leather cover with visible thread stitching along the binding — not a
+ * modern ruled notebook.
+ */
+.paper-journal {
+  background:
+    /* page curving down into the binding */
+    linear-gradient(
+      90deg,
+      rgba(46, 28, 12, 0.32),
+      rgba(46, 28, 12, 0.1) 5%,
+      transparent 11%
+    ),
+    /* handling smudges and age mottling */
+    radial-gradient(9em 6em at 88% 4%, rgba(129, 92, 41, 0.18), transparent 70%),
+    radial-gradient(7em 7em at 6% 96%, rgba(112, 76, 30, 0.2), transparent 70%),
+    radial-gradient(115% 105% at 35% 0%, #eadfb9 0%, #dfcc9e 55%, #c8ac73 100%);
+  border-radius: 2px 8px 8px 2px;
+  /* worn leather cover peeking out around the page */
+  box-shadow:
+    0 0 0 1em #55381f,
+    0 0 0 1.18em #33200f,
+    0 1.6em 3em rgba(0, 0, 0, 0.6);
+  margin: 1.6em;
+}
+
+/* thread stitches along the binding edge */
+.paper-journal::before {
+  content: "";
+  position: absolute;
+  top: 0.9em;
+  bottom: 0.9em;
+  left: 0.75em;
+  border-left: 0.16em dashed rgba(43, 26, 11, 0.55);
+  pointer-events: none;
+}
+
+.paper-journal .paper-title {
+  color: #4a3216;
+  border-bottom: 2px solid rgba(74, 50, 22, 0.4);
+  padding-bottom: 0.2em;
+}
+
+.paper-journal .paper-body {
+  color: #3b2a14;
+  line-height: 1.6;
+  /* faint hand-ruled guide lines, drawn in dry ink */
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0 calc(1.6em - 1px),
+    rgba(101, 78, 42, 0.28) calc(1.6em - 1px) 1.6em
+  );
+  /* restart the rules at the top of every page fragment */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* keep handwriting sitting on the ruled lines */
+.paper-journal .paper-body p {
+  margin: 0 0 1.6em;
+}
+
+/* ------------------------------------------------------------ pagination */
+
+/*
+ * Paged documents flow their text into page-sized CSS columns and show one
+ * column at a time through a clipping window. Geometry (must match the
+ * constants in paperRender.ts): the paper is 38em wide with 3.6em side
+ * padding, so a page column is 30.8em and the column gap is both paddings
+ * (7.2em) — every page starts exactly 38em after the previous one, and
+ * flipping is a translateX in whole paper-widths.
+ */
+.paper-clip {
+  overflow: hidden;
+  height: var(--page-h, 33em);
+}
+
+.paper-pages {
+  height: 100%;
+  column-width: 30.8em;
+  column-gap: 7.2em;
+  column-fill: auto;
+  transform: translateX(calc(var(--page, 0) * -38em));
+  transition: transform 0.3s ease;
+}
+
+/* A `---` line in the content forces the next page. */
+.paper-pages .page-break {
+  break-before: column;
+}
+
+/* The same `---` on a continuous sheet is just a section divider. */
+.text-divider {
+  text-align: center;
+  letter-spacing: 0.35em;
+  margin: 1.4em 0;
+  color: rgba(74, 52, 24, 0.65);
+}
+
+.text-divider::before {
+  content: "* * *";
+}
+
+/* Page flipper, sitting in the paper's bottom margin. */
+.page-nav {
+  position: absolute;
+  left: 3.6em;
+  right: 3.6em;
+  bottom: 1.15em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9em;
+  font-family: "Cinzel", serif;
+  font-size: 0.9em;
+  color: rgba(58, 40, 16, 0.8);
+  user-select: none;
+}
+
+.page-nav button {
+  font: inherit;
+  font-size: 1.5em;
+  line-height: 1;
+  background: none;
+  border: none;
+  padding: 0 0.4em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.page-nav button:hover:not(:disabled) {
+  color: #1f1404;
+}
+
+.page-nav button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* --------------------------------------------------------------- ID card */
+
+/*
+ * A landscape parchment credential: printed frame and labels (Cinzel) with
+ * the holder's details filled in by hand (Caveat), a portrait frame and a
+ * red seal stamped over the corner.
+ */
+.id-card {
+  font-size: calc(16px * var(--zoom, 1));
+  width: 34em;
+  flex-shrink: 0;
+  position: relative;
+  align-self: center;
+  padding: 1.5em 1.8em 1.8em;
+  color: #2c2418;
+  background: radial-gradient(
+    120% 100% at 25% 0%,
+    #f7eed6 0%,
+    #efe1bf 55%,
+    #e0cba0 100%
+  );
+  border-radius: 10px;
+  box-shadow:
+    0 1.2em 2.4em rgba(0, 0, 0, 0.55),
+    0 0.2em 0.5em rgba(0, 0, 0, 0.35);
+  transform: rotate(-0.6deg);
+}
+
+/* printed double frame just inside the card edge */
+.id-card::before {
+  content: "";
+  position: absolute;
+  inset: 0.7em;
+  border: 3px double rgba(120, 84, 30, 0.55);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.id-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+  margin: 0.2em 0.5em 1.1em;
+  font-family: "Cinzel", serif;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-align: center;
+  color: rgba(88, 60, 22, 0.85);
+}
+
+.id-head::before,
+.id-head::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid rgba(120, 84, 30, 0.45);
+}
+
+.id-main {
+  display: flex;
+  gap: 1.4em;
+  align-items: flex-start;
+}
+
+.id-portrait {
+  width: 8em;
+  height: 9.6em;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    160deg,
+    rgba(120, 90, 40, 0.16),
+    rgba(120, 90, 40, 0.05)
+  );
+  border: 2px solid rgba(110, 78, 30, 0.55);
+  border-radius: 4px;
+}
+
+/* vignette overlays the content so it also stamps a pasted-in photo */
+.id-portrait::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 1.2em rgba(90, 62, 20, 0.35);
+  pointer-events: none;
+}
+
+/* the likeness reads as drawn, not pasted-in emoji */
+.id-portrait .likeness {
+  font-size: 5em;
+  filter: sepia(0.45) saturate(0.8) contrast(0.95);
+}
+
+/* a linked image fills the frame, toned to match the parchment */
+.id-portrait .likeness-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: sepia(0.35) saturate(0.85) contrast(0.95);
+}
+
+.id-portrait .likeness-empty {
+  font-size: 5em;
+  filter: grayscale(1);
+  opacity: 0.18;
+}
+
+.id-info {
+  flex: 1;
+  min-width: 0;
+  padding-top: 0.1em;
+}
+
+.id-name {
+  font-family: "Cinzel", serif;
+  font-weight: 600;
+  font-size: calc(1.5em * var(--font-scale, 1));
+  color: #3a2c15;
+  border-bottom: 1px solid rgba(90, 60, 20, 0.35);
+  padding-bottom: 0.15em;
+  margin-bottom: 0.45em;
+  overflow-wrap: break-word;
+}
+
+.id-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 1.1em;
+  row-gap: 0.3em;
+  align-items: baseline;
+}
+
+.id-label {
+  font-family: "Cinzel", serif;
+  font-size: calc(0.72em * var(--font-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(90, 62, 22, 0.8);
+}
+
+.id-value {
+  font-family: "Caveat", cursive;
+  font-size: calc(1.35em * var(--font-scale, 1));
+  line-height: 1.15;
+  color: #33250e;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.id-blank {
+  font-family: Georgia, "Palatino Linotype", "Times New Roman", serif;
+  font-style: italic;
+  color: rgba(80, 68, 50, 0.75);
+}
+
+.id-notes {
+  margin: 1.1em 0.2em 0;
+  padding-top: 0.7em;
+  border-top: 1px dotted rgba(110, 78, 30, 0.5);
+  font-family: "Caveat", cursive;
+  font-size: calc(1.25em * var(--font-scale, 1));
+  line-height: 1.25;
+  color: #3b2c12;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* seal stamped over the corner; multiply lets the ink show through it */
+.id-seal {
+  position: absolute;
+  right: 1.5em;
+  bottom: 1.1em;
+  width: 5em;
+  height: 5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0.3em double rgba(154, 34, 27, 0.6);
+  border-radius: 50%;
+  color: rgba(154, 34, 27, 0.68);
+  transform: rotate(-14deg);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.id-seal span {
+  font-size: 2em;
+}
+
+/* -------------------------------------------------------------- textures */
+
+/*
+ * Paper-condition overlays ("aged" is the bare default and adds nothing).
+ * The renderer appends `.paper-texture` as the paper's last child, so every
+ * layer here paints above the ink — stains, creases and char sit on top of
+ * the writing like they would on a real page. Damage colors reuse em units
+ * so they scale with the reader's zoom.
+ */
+.paper-texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Fancy: brighter stock, a soft sheen and a double gold frame. */
+.paper-tex-fancy {
+  filter: brightness(1.05) saturate(0.92);
+}
+
+.paper-tex-fancy .paper-texture {
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.55) 47%,
+    rgba(255, 255, 255, 0) 62%
+  );
+  mix-blend-mode: soft-light;
+}
+
+.paper-tex-fancy .paper-texture::before {
+  content: "";
+  position: absolute;
+  inset: 1.4em;
+  border: 3px double rgba(158, 116, 40, 0.5);
+  border-radius: 2px;
+}
+
+/* Old: deep yellowing, darkened edges and foxing speckles. */
+.paper-tex-old {
+  filter: sepia(0.35) brightness(0.95) contrast(1.02);
+}
+
+.paper-tex-old .paper-texture {
+  mix-blend-mode: multiply;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='2' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.28 0 0 0 0 0.1 0 0 0 7 -4.9'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23f)'/%3E%3C/svg%3E"),
+    radial-gradient(
+      130% 130% at 50% 35%,
+      transparent 52%,
+      rgba(112, 76, 28, 0.22) 78%,
+      rgba(74, 47, 14, 0.5) 100%
+    );
+}
+
+/*
+ * Crumpled: photo of a real crumpled sheet (public domain), normalized to
+ * mid-gray and blended with `overlay` — unlike multiply, crease shadows AND
+ * ridge highlights land on both the paper and the ink written on it, so the
+ * text follows the crumple instead of floating above it.
+ */
+.paper-tex-crumpled .paper-texture {
+  mix-blend-mode: overlay;
+  background: url("../textures/crumpled.jpg") center / cover;
+  filter: grayscale(1) brightness(1.12) contrast(1.25);
+}
+
+/* Rough: coarse fiber tooth with darker, deckled edges. */
+.paper-tex-rough .paper-texture {
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+  box-shadow: inset 0 0 1.4em rgba(90, 65, 30, 0.6);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.11' numOctaves='3' seed='8'/%3E%3CfeDiffuseLighting lighting-color='white' surfaceScale='1.7'%3E%3CfeDistantLight azimuth='60' elevation='62'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23r)'/%3E%3C/svg%3E");
+  background-size: 15em 15em;
+}
+
+/*
+ * Water-damaged: the stain photo flipped and desaturated — tide marks read
+ * as water once the color is gone — plus a soaked wash along the bottom.
+ */
+.paper-tex-wet {
+  filter: saturate(0.88) brightness(0.98);
+}
+
+.paper-tex-wet .paper-texture {
+  mix-blend-mode: multiply;
+  /* scale(-1) flips the photo so wet and stained don't look identical;
+     the 0deg wash sits at the top pre-flip and lands on the bottom edge. */
+  transform: scale(-1);
+  background:
+    linear-gradient(
+      0deg,
+      transparent 55%,
+      rgba(96, 82, 52, 0.16) 80%,
+      rgba(88, 74, 46, 0.32) 100%
+    ),
+    url("../textures/stains.jpg") center / cover;
+  filter: grayscale(0.8) brightness(1.55) contrast(1.05);
+}
+
+/*
+ * Stained: photo of real coffee stains on paper (CC BY-SA, see README);
+ * brightened so the clean paper multiplies away and the rings stay.
+ */
+.paper-tex-stained .paper-texture {
+  mix-blend-mode: multiply;
+  background: url("../textures/stains.jpg") center / cover;
+  filter: saturate(0.9) brightness(1.4) contrast(1.1);
+}
+
+/* Bloodstained: a dark pool, satellite spatter and a running drip. */
+.paper-tex-blood .paper-texture {
+  mix-blend-mode: multiply;
+  background:
+    radial-gradient(
+      5.5em 4.5em at 80% 12%,
+      rgba(95, 8, 6, 0.6),
+      rgba(122, 14, 10, 0.38) 45%,
+      rgba(122, 14, 10, 0.12) 68%,
+      transparent 78%
+    ),
+    radial-gradient(
+      2.6em 2.2em at 68% 24%,
+      rgba(110, 12, 8, 0.42),
+      rgba(110, 12, 8, 0.1) 60%,
+      transparent 75%
+    ),
+    radial-gradient(
+      1.6em 1.4em at 14% 86%,
+      rgba(110, 12, 8, 0.38),
+      transparent 70%
+    ),
+    radial-gradient(0.5em 0.5em at 60% 8%, rgba(110, 12, 8, 0.5), transparent 70%),
+    radial-gradient(0.35em 0.35em at 64% 17%, rgba(110, 12, 8, 0.45), transparent 70%),
+    radial-gradient(0.3em 0.3em at 73% 30%, rgba(110, 12, 8, 0.4), transparent 70%),
+    radial-gradient(0.4em 0.4em at 20% 79%, rgba(110, 12, 8, 0.4), transparent 70%),
+    radial-gradient(
+      0.18em 4em at 81% 30%,
+      rgba(110, 12, 8, 0.4),
+      rgba(110, 12, 8, 0.15) 60%,
+      transparent 85%
+    );
+}
+
+/* Burnt: char creeping in from corners with a thin ember fringe. */
+.paper-tex-burnt .paper-texture {
+  background:
+    radial-gradient(
+      9em 7em at 100% 0%,
+      rgba(16, 10, 6, 0.92),
+      rgba(45, 24, 8, 0.6) 45%,
+      rgba(150, 70, 18, 0.25) 62%,
+      transparent 75%
+    ),
+    radial-gradient(
+      7em 5.5em at 0% 100%,
+      rgba(16, 10, 6, 0.88),
+      rgba(45, 24, 8, 0.55) 48%,
+      rgba(150, 70, 18, 0.22) 64%,
+      transparent 76%
+    ),
+    radial-gradient(
+      4.5em 3.5em at 30% 0%,
+      rgba(20, 12, 6, 0.6),
+      rgba(140, 65, 16, 0.2) 60%,
+      transparent 74%
+    ),
+    radial-gradient(
+      3.5em 3em at 100% 60%,
+      rgba(20, 12, 6, 0.5),
+      rgba(140, 65, 16, 0.18) 60%,
+      transparent 74%
+    );
+}

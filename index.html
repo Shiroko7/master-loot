@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Master Loot — Owlbear Rodeo Extension</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(80% 60% at 50% 0%, #2a1f12, #120d07 70%);
+        color: #e9dfc8;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 40px 16px;
+      }
+      main {
+        max-width: 640px;
+        width: 100%;
+      }
+      h1 {
+        font-size: 40px;
+        margin: 0 0 4px;
+        color: #e8c15a;
+        letter-spacing: 0.04em;
+      }
+      .tagline {
+        color: #a4936f;
+        margin: 0 0 28px;
+        font-size: 17px;
+      }
+      .card {
+        background: linear-gradient(180deg, #1d150c, #171008);
+        border: 1px solid #6d5426;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        color: #e8c15a;
+      }
+      code {
+        display: inline-block;
+        background: #0d0905;
+        border: 1px solid #4a3819;
+        border-radius: 6px;
+        padding: 6px 10px;
+        color: #e9dfc8;
+        word-break: break-all;
+      }
+      ol,
+      ul {
+        margin: 0;
+        padding-left: 20px;
+        line-height: 1.7;
+      }
+      .footer {
+        text-align: center;
+        color: #a4936f;
+        font-size: 13px;
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>💰 Master Loot</h1>
+      <p class="tagline">
+        WoW-style loot for Owlbear Rodeo — with letters, books and journals
+        your players will actually want to read.
+      </p>
+
+      <div class="card">
+        <h2>Install</h2>
+        <ol>
+          <li>In Owlbear Rodeo, open <b>Extensions</b> → <b>Add Extension</b>.</li>
+          <li>Paste this manifest URL: <code id="manifest-url"></code></li>
+          <li>Enable Master Loot in your room.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2>How it works</h2>
+        <ul>
+          <li><b>GM:</b> right-click any token → <b>Loot</b> to fill it with
+            items, letters, books or journals, then flip on <b>Lootable</b>.</li>
+          <li>A glowing coin bag appears on the token.</li>
+          <li><b>Players:</b> click the bag to open the loot window; click a
+            written item to read it on immersive, aged paper.</li>
+          <li>Readers can adjust text size and zoom — the settings are
+            remembered in their browser.</li>
+        </ul>
+      </div>
+
+      <p class="footer">Made by shiro</p>
+    </main>
+    <script>
+      document.getElementById("manifest-url").textContent =
+        new URL("/manifest.json", window.location.origin).href;
+    </script>
+  </body>
+</html>

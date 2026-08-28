@@ -1,0 +1,16 @@
+{
+  "name": "Master Loot",
+  "version": "0.1.0",
+  "manifest_version": 1,
+  "author": "shiro",
+  "description": "Immersive WoW-style loot: mark any token lootable and let players discover letters, books and journals.",
+  "icon": "/icon.svg",
+  "action": {
+    "title": "Master Loot",
+    "icon": "/icon.svg",
+    "popover": "/action.html",
+    "width": 340,
+    "height": 460
+  },
+  "background_url": "/background.html"
+}
