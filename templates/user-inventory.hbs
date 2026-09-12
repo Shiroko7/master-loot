@@ -1,0 +1,128 @@
+<div class="user-inventory-app panel">
+  <header class="panel-header">
+    <div class="header-user-select">
+      <label for="inventory-user-select" class="sr-only">Select Inventory</label>
+      <select id="inventory-user-select" class="user-select">
+        {{#each players}}
+          <option value="{{this.id}}" {{#if this.isSelected}}selected{{/if}}>
+            {{this.name}}{{#if this.isMe}} (You){{/if}}{{#if this.isLocked}} 🔒{{/if}}{{#unless this.isPublic}} 👁️‍🗨️{{/unless}}
+          </option>
+        {{/each}}
+      </select>
+    </div>
+
+    <div class="header-actions">
+      {{#if canManage}}
+        <button class="btn-icon toggle-public-btn" title="{{#if state.isPublic}}Make Private{{else}}Make Public{{/if}}">
+          {{#if state.isPublic}}👁️{{else}}🕶️{{/if}}
+        </button>
+        <button class="btn-icon toggle-lock-btn" title="{{#if state.isLocked}}Unlock Inventory{{else}}Lock Inventory{{/if}}">
+          {{#if state.isLocked}}🔒{{else}}🔓{{/if}}
+        </button>
+      {{/if}}
+      <button class="btn-icon export-btn" title="Export JSON Backup">📥</button>
+      <button class="btn-icon import-btn" title="Import JSON Backup">📤</button>
+      <input type="file" class="import-file-input" accept=".json" style="display: none;" />
+      <button class="btn-icon close-btn" title="Close">✕</button>
+    </div>
+  </header>
+
+  {{#if isLockedNotice}}
+    <div class="status-banner locked-banner">
+      <span>🔒 This inventory is locked against non-GM transfers.</span>
+    </div>
+  {{/if}}
+
+  {{#if canView}}
+    <div class="inventory-toolbar">
+      <div class="inventory-search-row">
+        <div class="inventory-search-input-wrap">
+          <input type="text" class="inventory-search-input" placeholder="🔍 Search items, tags, notes…" />
+        </div>
+        {{#if canManage}}
+          <button class="btn btn-sm btn-gold add-item-btn">+ Add Item</button>
+          <button class="btn btn-sm add-section-btn">+ Section</button>
+        {{/if}}
+      </div>
+      {{#if tags.length}}
+        <div class="inventory-tags-row">
+          <span class="tag-pill active">All</span>
+          {{#each tags}}
+            <span class="tag-pill">#{{this}}</span>
+          {{/each}}
+        </div>
+      {{/if}}
+    </div>
+  {{/if}}
+
+  {{#if isPrivateNotice}}
+    <div class="empty-note private-note">
+      <p>👁️‍🗨️ This player's inventory is private.</p>
+    </div>
+  {{else}}
+    <div class="panel-body inventory-drop-zone">
+      {{#if sections.length}}
+        {{#each sections}}
+          <div class="section-wrapper">
+            <button class="section-head" type="button">
+              <div class="section-head-left">
+                <span class="chev">▾</span>
+                <span class="section-head-title">📁 {{this.name}}</span>
+                <span class="section-head-count">{{this.items.length}}</span>
+              </div>
+              {{#if ../canManage}}
+                <div class="section-head-actions">
+                  <button class="btn btn-xs quick-add-btn" data-section="{{this.name}}">+ Item</button>
+                  <button class="btn btn-xs btn-danger delete-section-btn" data-section="{{this.name}}">✕</button>
+                </div>
+              {{/if}}
+            </button>
+            <div class="section-body">
+              {{#if this.items.length}}
+                {{#each this.items}}
+                  <div class="slot inventory-slot" data-item-id="{{this.id}}" draggable="{{../../canInteract}}">
+                    <span class="slot-icon">{{this.img}}</span>
+                    <div class="slot-name-col">
+                      <span class="slot-name">{{this.name}}</span>
+                      {{#if this.tags.length}}
+                        <div class="slot-tags">
+                          {{#each this.tags}}
+                            <span class="slot-tag-pill">#{{this}}</span>
+                          {{/each}}
+                        </div>
+                      {{/if}}
+                    </div>
+                    {{#if (gt this.quantity 1)}}
+                      <span class="slot-qty">×{{this.quantity}}</span>
+                    {{/if}}
+
+                    <div class="slot-controls">
+                      {{#if ../../canInteract}}
+                        <button class="btn btn-xs give-item-btn" title="Transfer item">Give</button>
+                      {{/if}}
+                      {{#if ../../canManage}}
+                        <button class="btn btn-xs edit-item-btn" title="Edit item">✎</button>
+                        <button class="btn btn-xs btn-danger delete-item-btn" title="Delete item">🗑️</button>
+                      {{/if}}
+                    </div>
+                  </div>
+                {{/each}}
+              {{else}}
+                <div class="section-empty">No items in this section.</div>
+              {{/if}}
+            </div>
+          </div>
+        {{/each}}
+      {{else}}
+        <div class="empty-note">
+          <p>Inventory is empty.</p>
+          <p class="empty-hint">Click '+ Add Item' or drag and drop items from scene loot bags.</p>
+        </div>
+      {{/if}}
+    </div>
+  {{/if}}
+
+  <footer class="panel-footer">
+    <span>Last updated: {{formatDate state.updatedAt}}</span>
+  </footer>
+</div>

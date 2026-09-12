@@ -23,3 +23,14 @@ export const MAX_DOC_CHARS = 10_000;
 
 export const PREFS_STORAGE_KEY = `${EXT_ID}/prefs`;
 export const BACKUP_STORAGE_PREFIX = `${EXT_ID}/backup/`;
+
+/** Socket channel for inventory synchronization and transfers */
+export const INVENTORY_SOCKET_CHANNEL = "module.master-loot";
+
+/** Room metadata key for GM-persisted audit loot log */
+export const LOOT_LOG_KEY = `${EXT_ID}/lootLog`;
+
+/** Modal window IDs */
+export const INVENTORY_MODAL_ID = `${EXT_ID}/inventory-modal`;
+export const LOOT_LOG_MODAL_ID = `${EXT_ID}/loot-log-modal`;
+

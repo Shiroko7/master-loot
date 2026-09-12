@@ -26,6 +26,8 @@ export default defineConfig({
         loot: resolve(__dirname, "loot.html"),
         document: resolve(__dirname, "document.html"),
         editor: resolve(__dirname, "editor.html"),
+        inventory: resolve(__dirname, "inventory.html"),
+        lootLog: resolve(__dirname, "loot-log.html"),
       },
     },
   },

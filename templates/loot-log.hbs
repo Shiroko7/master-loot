@@ -1,0 +1,75 @@
+<div class="loot-log-app panel">
+  <header class="panel-header">
+    <h1 class="panel-title">📜 Loot Audit Log</h1>
+    <div class="header-actions">
+      <button class="btn btn-danger clear-log-btn" title="Clear all log entries">Clear Log</button>
+      <button class="btn-icon close-btn" title="Close">✕</button>
+    </div>
+  </header>
+
+  <div class="log-filters">
+    <input type="text" class="filter-input search-input" placeholder="Filter by item name..." value="{{filterQuery}}" />
+    <select class="filter-select user-filter">
+      <option value="">All Users</option>
+      {{#each users}}
+        <option value="{{this}}" {{#if (eq this ../selectedUser)}}selected{{/if}}>{{this}}</option>
+      {{/each}}
+    </select>
+    <select class="filter-select source-filter">
+      <option value="">All Sources</option>
+      {{#each sources}}
+        <option value="{{this}}" {{#if (eq this ../selectedSource)}}selected{{/if}}>{{this}}</option>
+      {{/each}}
+    </select>
+  </div>
+
+  <div class="panel-body log-list">
+    {{#if logs.length}}
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Initiator</th>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Source</th>
+            <th>Destination</th>
+            <th>Rollback</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each logs}}
+            <tr class="log-row action-{{this.action}} {{#if this.undone}}log-row-undone{{/if}}">
+              <td class="log-time">{{formatTime this.timestamp}}</td>
+              <td class="log-action">
+                <span class="badge badge-{{this.action}}">{{this.action}}</span>
+                {{#if this.undone}}<span class="badge badge-undone">Undone</span>{{/if}}
+              </td>
+              <td class="log-user">{{this.userName}}</td>
+              <td class="log-item">{{this.itemName}}</td>
+              <td class="log-qty">×{{this.quantity}}</td>
+              <td class="log-source">{{this.sourceName}}</td>
+              <td class="log-target">{{this.targetName}}</td>
+              <td class="log-rollback">
+                {{#if this.undone}}
+                  <span class="rolled-back-label">Rolled back ✓</span>
+                {{else}}
+                  <button class="btn btn-xs undo-btn" data-log-id="{{this.id}}" title="Undo and return item">↩️ Undo</button>
+                {{/if}}
+              </td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <div class="empty-note">
+        <p>No audit log records found.</p>
+      </div>
+    {{/if}}
+  </div>
+
+  <footer class="panel-footer">
+    <span>Total records: {{logs.length}}</span>
+  </footer>
+</div>

@@ -27,11 +27,14 @@ import {
   savePrefs,
   type ReadingPrefs,
 } from "./storage";
+import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
+import { userInventoryItemToLootItem } from "./modules/inventory/UserInventoryModel";
 import type { LootItem } from "./types";
 
 const params = new URLSearchParams(location.search);
 const tokenId = params.get("token") ?? "";
 const docId = params.get("doc") ?? "";
+const userId = params.get("user") ?? "";
 
 const app = document.getElementById("app")!;
 let prefs: ReadingPrefs = getPrefs();
@@ -136,6 +139,11 @@ function close(): void {
 }
 
 function findEntry(items: Item[]): LootItem | undefined {
+  if (userId) {
+    const inv = LocalStorageAdapter.getInventory(userId);
+    const item = inv.items.find((i) => i.id === docId);
+    return item ? userInventoryItemToLootItem(item) : undefined;
+  }
   const token = items.find((i) => i.id === tokenId);
   const loot = token ? getLoot(token) : undefined;
   return loot?.items.find((i) => i.id === docId);

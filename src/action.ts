@@ -9,6 +9,8 @@ import {
   getBadgeImageSetting,
   getLoot,
   openEditorModal,
+  openInventoryModal,
+  openLootLogModal,
   openLootPopover,
   resnapBadges,
   resolveBadgeImage,
@@ -190,14 +192,32 @@ function shell(): { panel: HTMLElement; body: HTMLElement } {
   const title = el("h1", "panel-title");
   title.textContent = "Master Loot";
   header.append(title);
+
+  const actions = el("div", "header-actions");
+
+  const invBtn = el("button", "btn-icon");
+  invBtn.textContent = "🎒";
+  invBtn.title = "Personal Inventory";
+  invBtn.ariaLabel = "Personal Inventory";
+  invBtn.onclick = () => void openInventoryModal();
+
+  const logBtn = el("button", "btn-icon");
+  logBtn.textContent = "📜";
+  logBtn.title = "Loot Activity Log";
+  logBtn.ariaLabel = "Loot Activity Log";
+  logBtn.onclick = () => void openLootLogModal();
+  actions.append(invBtn, logBtn);
+
   if (role === "GM") {
     const gear = el("button", "btn-icon");
     gear.textContent = "⚙";
     gear.title = "Master Loot settings";
     gear.ariaLabel = "Master Loot settings";
     gear.onclick = toggleSettings;
-    header.append(gear);
+    actions.append(gear);
   }
+  header.append(actions);
+
   const body = el("div", "panel-body");
   panel.append(header, body);
   mainEl.append(panel);

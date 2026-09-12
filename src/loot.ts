@@ -3,7 +3,9 @@ import {
   BADGE_KEY,
   DOC_MODAL_ID,
   EDITOR_MODAL_ID,
+  INVENTORY_MODAL_ID,
   LOOT_KEY,
+  LOOT_LOG_MODAL_ID,
   LOOT_POPOVER_ID,
   SETTINGS_KEY,
   SPARKLE_KEY,
@@ -299,8 +301,8 @@ export async function openLootPopover(
   await OBR.popover.open({
     id: LOOT_POPOVER_ID,
     url: `/loot.html?token=${encodeURIComponent(tokenId)}`,
-    width: 340,
-    height: 460,
+    width: 360,
+    height: 520,
     hidePaper: true,
     anchorElementId: anchor.elementId,
     anchorPosition: anchor.position,
@@ -339,6 +341,43 @@ export async function openDocumentModal(
     url: `/document.html?token=${encodeURIComponent(tokenId)}&doc=${encodeURIComponent(docId)}`,
     width: size.width,
     height: size.height,
+    hidePaper: true,
+  });
+}
+
+export async function openUserDocumentModal(
+  userId: string,
+  docId: string,
+  size: { width: number; height: number } = { width: 1100, height: 820 },
+): Promise<void> {
+  await OBR.modal.open({
+    id: DOC_MODAL_ID,
+    url: `/document.html?user=${encodeURIComponent(userId)}&doc=${encodeURIComponent(docId)}`,
+    width: size.width,
+    height: size.height,
+    hidePaper: true,
+  });
+}
+
+export async function openInventoryModal(targetUserId?: string): Promise<void> {
+  const url = targetUserId
+    ? `/inventory.html?user=${encodeURIComponent(targetUserId)}`
+    : `/inventory.html`;
+  await OBR.modal.open({
+    id: INVENTORY_MODAL_ID,
+    url,
+    width: 480,
+    height: 620,
+    hidePaper: true,
+  });
+}
+
+export async function openLootLogModal(): Promise<void> {
+  await OBR.modal.open({
+    id: LOOT_LOG_MODAL_ID,
+    url: `/loot-log.html`,
+    width: 820,
+    height: 600,
     hidePaper: true,
   });
 }
