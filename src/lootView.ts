@@ -2,6 +2,7 @@ import OBR, { type Item } from "@owlbear-rodeo/sdk";
 import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
 import { LOOT_POPOVER_ID } from "./constants";
+import { setupWindowResizer } from "./windowResizer";
 import { buildCoinChips, buildCoinConverter } from "./coins";
 import { safeHttpUrl } from "./fiveETools";
 import { getLoot, openDocumentModal, openInventoryModal, openLootLogModal, openUserDocumentModal } from "./loot";
@@ -437,6 +438,19 @@ async function refresh(): Promise<void> {
 }
 
 OBR.onReady(async () => {
+  setupWindowResizer({
+    windowKey: "loot",
+    type: "popover",
+    popoverId: LOOT_POPOVER_ID,
+    defaultWidth: 360,
+    defaultHeight: 520,
+    minWidth: 300,
+    minHeight: 340,
+    maxWidth: 900,
+    maxHeight: 1200,
+    centered: "horizontal",
+  });
+
   myId = await OBR.player.getId();
   myName = await OBR.player.getName();
   role = await OBR.player.getRole();

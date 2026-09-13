@@ -2,6 +2,7 @@ import OBR, { type Player } from "@owlbear-rodeo/sdk";
 import "@fontsource/cinzel/600.css";
 import "../styles/ui.css";
 import { INVENTORY_MODAL_ID } from "../constants";
+import { closeWindow, setupWindowResizer } from "../windowResizer";
 import { LocalStorageAdapter } from "../storage/LocalStorageAdapter";
 import { ExportManager } from "../storage/ExportManager";
 import {
@@ -714,34 +715,28 @@ function render(): void {
     render();
   };
   userSelectWrapper.append(userSelect);
+
+  // Status badges next to user select
+  if (state.isLocked) {
+    const lockBadge = el("span", "badge-status badge-locked");
+    lockBadge.title = "Inventory is locked against peer transfers";
+    lockBadge.textContent = "🔒 Locked";
+    userSelectWrapper.append(lockBadge);
+  }
+  if (!state.isPublic) {
+    const privBadge = el("span", "badge-status badge-private");
+    privBadge.title = "Inventory is private to owner & GM";
+    privBadge.textContent = "🕶️ Private";
+    userSelectWrapper.append(privBadge);
+  }
+
   header.append(userSelectWrapper);
 
   const actions = el("div", "header-actions");
 
-  // Toggles for Owner/GM
-  if (canManage) {
-    // Public / Private toggle
-    const pubBtn = el("button", "btn-icon");
-    pubBtn.textContent = state.isPublic ? "👁️" : "🕶️";
-    pubBtn.title = state.isPublic ? "Public (Click to make Private)" : "Private (Click to make Public)";
-    pubBtn.onclick = () => {
-      state.isPublic = !state.isPublic;
-      saveCurrentState(state);
-    };
+  // 1. History Controls Group (Undo & Redo)
+  const historyGroup = el("div", "header-btn-group");
 
-    // Lock / Unlock toggle
-    const lockBtn = el("button", "btn-icon");
-    lockBtn.textContent = state.isLocked ? "🔒" : "🔓";
-    lockBtn.title = state.isLocked ? "Locked (Click to Unlock)" : "Unlocked (Click to Lock)";
-    lockBtn.onclick = () => {
-      state.isLocked = !state.isLocked;
-      saveCurrentState(state);
-    };
-
-    actions.append(pubBtn, lockBtn);
-  }
-
-  // Undo button
   const undoBtn = el("button", "btn-icon");
   undoBtn.textContent = "↩️";
   undoBtn.title = "Undo Last Action (Ctrl+Z)";
@@ -756,7 +751,6 @@ function render(): void {
     }
   };
 
-  // Redo button
   const redoBtn = el("button", "btn-icon");
   redoBtn.textContent = "↪️";
   redoBtn.title = "Redo Last Undone Action (Ctrl+Y)";
@@ -771,29 +765,18 @@ function render(): void {
     }
   };
 
-  // Activity Log button
-  const logBtn = el("button", "btn-icon");
-  logBtn.textContent = "📜";
-  logBtn.title = "Loot Activity Log";
-  logBtn.onclick = () => void openLootLogModal();
+  historyGroup.append(undoBtn, redoBtn);
+  actions.append(historyGroup);
 
-  actions.append(undoBtn, redoBtn, logBtn);
-
-  // Export JSON button
-  const exportBtn = el("button", "btn-icon");
-  exportBtn.textContent = "📥";
-  exportBtn.title = "Export JSON Backup";
-  exportBtn.onclick = () => void ExportManager.exportInventory(state);
-  actions.append(exportBtn);
-
-  // Import JSON button (if canManage)
+  // Hidden file input for backup import
+  let fileInput: HTMLInputElement | undefined;
   if (canManage) {
-    const fileInput = el("input");
+    fileInput = el("input");
     fileInput.type = "file";
     fileInput.accept = ".json";
     fileInput.style.display = "none";
     fileInput.onchange = async () => {
-      const file = fileInput.files?.[0];
+      const file = fileInput?.files?.[0];
       if (!file) return;
       try {
         const imported = await ExportManager.importFromFile(
@@ -808,18 +791,162 @@ function render(): void {
         alert(err.message || "Failed to import inventory.");
       }
     };
-
-    const importBtn = el("button", "btn-icon");
-    importBtn.textContent = "📤";
-    importBtn.title = "Import JSON Backup";
-    importBtn.onclick = () => fileInput.click();
-    actions.append(fileInput, importBtn);
+    actions.append(fileInput);
   }
 
+  // 2. Options Dropdown Menu (Gear Icon)
+  const menuWrap = el("div", "header-menu-wrap");
+  const menuTrigger = el("button", "btn-icon header-menu-trigger");
+  menuTrigger.textContent = "⚙";
+  menuTrigger.title = "Inventory Options & Tools";
+  menuTrigger.ariaLabel = "Inventory Options";
+
+  let isMenuOpen = false;
+  const menuDropdown = el("div", "header-menu-dropdown");
+  menuDropdown.style.display = "none";
+
+  function closeMenu() {
+    isMenuOpen = false;
+    menuDropdown.style.display = "none";
+    menuTrigger.classList.remove("active");
+  }
+
+  function toggleMenu(e: MouseEvent) {
+    e.stopPropagation();
+    isMenuOpen = !isMenuOpen;
+    menuDropdown.style.display = isMenuOpen ? "flex" : "none";
+    if (isMenuOpen) {
+      menuTrigger.classList.add("active");
+    } else {
+      menuTrigger.classList.remove("active");
+    }
+  }
+
+  menuTrigger.onclick = toggleMenu;
+
+  if (canManage) {
+    const permTitle = el("div", "menu-section-title");
+    permTitle.textContent = "Permissions & Privacy";
+    menuDropdown.append(permTitle);
+
+    // Toggle Visibility
+    const visItem = el("button", "menu-item");
+    const visIcon = el("span", "menu-item-icon");
+    visIcon.textContent = state.isPublic ? "👁️" : "🕶️";
+    const visText = el("div", "menu-item-text");
+    const visLabel = el("span", "menu-item-label");
+    visLabel.textContent = state.isPublic ? "Make Private" : "Make Public";
+    const visDesc = el("span", "menu-item-desc");
+    visDesc.textContent = state.isPublic ? "Currently visible to party" : "Currently hidden from party";
+    visText.append(visLabel, visDesc);
+    visItem.append(visIcon, visText);
+    visItem.onclick = () => {
+      closeMenu();
+      state.isPublic = !state.isPublic;
+      saveCurrentState(state);
+    };
+
+    // Toggle Lock
+    const lockItem = el("button", "menu-item");
+    const lockIcon = el("span", "menu-item-icon");
+    lockIcon.textContent = state.isLocked ? "🔒" : "🔓";
+    const lockText = el("div", "menu-item-text");
+    const lockLabel = el("span", "menu-item-label");
+    lockLabel.textContent = state.isLocked ? "Unlock Inventory" : "Lock Inventory";
+    const lockDesc = el("span", "menu-item-desc");
+    lockDesc.textContent = state.isLocked ? "Block peer transfers" : "Allow peer transfers";
+    lockText.append(lockLabel, lockDesc);
+    lockItem.append(lockIcon, lockText);
+    lockItem.onclick = () => {
+      closeMenu();
+      state.isLocked = !state.isLocked;
+      saveCurrentState(state);
+    };
+
+    menuDropdown.append(visItem, lockItem);
+
+    const div1 = el("div", "menu-divider");
+    menuDropdown.append(div1);
+  }
+
+  // Activity Log
+  const logTitle = el("div", "menu-section-title");
+  logTitle.textContent = "Logs & History";
+  menuDropdown.append(logTitle);
+
+  const logItem = el("button", "menu-item");
+  const logIcon = el("span", "menu-item-icon");
+  logIcon.textContent = "📜";
+  const logText = el("div", "menu-item-text");
+  const logLabel = el("span", "menu-item-label");
+  logLabel.textContent = "Loot Activity Log";
+  const logDesc = el("span", "menu-item-desc");
+  logDesc.textContent = "Audit trail of claims & transfers";
+  logText.append(logLabel, logDesc);
+  logItem.append(logIcon, logText);
+  logItem.onclick = () => {
+    closeMenu();
+    void openLootLogModal();
+  };
+  menuDropdown.append(logItem);
+
+  // Backup & Restore
+  const div2 = el("div", "menu-divider");
+  menuDropdown.append(div2);
+
+  const backupTitle = el("div", "menu-section-title");
+  backupTitle.textContent = "Backup & Data";
+  menuDropdown.append(backupTitle);
+
+  const exportItem = el("button", "menu-item");
+  const exportIcon = el("span", "menu-item-icon");
+  exportIcon.textContent = "📥";
+  const exportText = el("div", "menu-item-text");
+  const exportLabel = el("span", "menu-item-label");
+  exportLabel.textContent = "Export JSON Backup";
+  const exportDesc = el("span", "menu-item-desc");
+  exportDesc.textContent = "Save full inventory to file";
+  exportText.append(exportLabel, exportDesc);
+  exportItem.append(exportIcon, exportText);
+  exportItem.onclick = () => {
+    closeMenu();
+    void ExportManager.exportInventory(state);
+  };
+  menuDropdown.append(exportItem);
+
+  if (canManage && fileInput) {
+    const importItem = el("button", "menu-item");
+    const importIcon = el("span", "menu-item-icon");
+    importIcon.textContent = "📤";
+    const importText = el("div", "menu-item-text");
+    const importLabel = el("span", "menu-item-label");
+    importLabel.textContent = "Import JSON Backup";
+    const importDesc = el("span", "menu-item-desc");
+    importDesc.textContent = "Restore inventory from file";
+    importText.append(importLabel, importDesc);
+    importItem.append(importIcon, importText);
+    importItem.onclick = () => {
+      closeMenu();
+      fileInput?.click();
+    };
+    menuDropdown.append(importItem);
+  }
+
+  // Dismiss dropdown on window click
+  window.addEventListener("click", (e) => {
+    if (isMenuOpen && !menuWrap.contains(e.target as Node)) {
+      closeMenu();
+    }
+  });
+
+  menuWrap.append(menuTrigger, menuDropdown);
+  actions.append(menuWrap);
+
+  // 3. Close button
   const closeBtn = el("button", "btn-icon");
   closeBtn.textContent = "✕";
   closeBtn.title = "Close";
-  closeBtn.onclick = () => void OBR.modal.close(INVENTORY_MODAL_ID);
+  closeBtn.onclick = () => void closeWindow(INVENTORY_MODAL_ID);
   actions.append(closeBtn);
 
   header.append(actions);
@@ -1174,6 +1301,19 @@ function render(): void {
 }
 
 OBR.onReady(async () => {
+  setupWindowResizer({
+    windowKey: "inventory",
+    type: "popover",
+    popoverId: INVENTORY_MODAL_ID,
+    defaultWidth: 480,
+    defaultHeight: 620,
+    minWidth: 360,
+    minHeight: 400,
+    maxWidth: 1100,
+    maxHeight: 1200,
+    centered: true,
+  });
+
   myId = await OBR.player.getId();
   myName = await OBR.player.getName();
   myRole = await OBR.player.getRole();

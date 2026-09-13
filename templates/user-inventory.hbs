@@ -12,17 +12,15 @@
     </div>
 
     <div class="header-actions">
-      {{#if canManage}}
-        <button class="btn-icon toggle-public-btn" title="{{#if state.isPublic}}Make Private{{else}}Make Public{{/if}}">
-          {{#if state.isPublic}}👁️{{else}}🕶️{{/if}}
-        </button>
-        <button class="btn-icon toggle-lock-btn" title="{{#if state.isLocked}}Unlock Inventory{{else}}Lock Inventory{{/if}}">
-          {{#if state.isLocked}}🔒{{else}}🔓{{/if}}
-        </button>
-      {{/if}}
-      <button class="btn-icon export-btn" title="Export JSON Backup">📥</button>
-      <button class="btn-icon import-btn" title="Import JSON Backup">📤</button>
-      <input type="file" class="import-file-input" accept=".json" style="display: none;" />
+      <div class="header-btn-group">
+        <button class="btn-icon undo-btn" title="Undo Last Action (Ctrl+Z)">↩️</button>
+        <button class="btn-icon redo-btn" title="Redo Last Undone Action (Ctrl+Y)">↪️</button>
+      </div>
+
+      <div class="header-menu-wrap">
+        <button class="btn-icon header-menu-trigger" title="Inventory Options">⚙</button>
+      </div>
+
       <button class="btn-icon close-btn" title="Close">✕</button>
     </div>
   </header>

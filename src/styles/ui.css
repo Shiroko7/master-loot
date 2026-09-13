@@ -1212,4 +1212,286 @@ label.field > span {
   border-color: var(--gold);
 }
 
+/* ----------------------------------------------------------------- Window Resizing */
+
+.window-resize-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99990;
+}
+
+.window-resize-handle {
+  position: fixed;
+  pointer-events: auto;
+  z-index: 99995;
+  touch-action: none;
+}
+
+.window-resize-e {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.window-resize-w {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.window-resize-s {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.window-resize-se {
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  z-index: 100000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 3px;
+  background: transparent;
+  user-select: none;
+}
+
+.window-resize-sw {
+  left: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nesw-resize;
+  z-index: 100000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 3px;
+  background: transparent;
+  user-select: none;
+}
+
+.window-resize-grip {
+  width: 13px;
+  height: 13px;
+  color: var(--border);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.window-resize-se:hover .window-resize-grip,
+.window-resize-se.active .window-resize-grip {
+  opacity: 1;
+  color: var(--gold-bright);
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 4px rgba(232, 193, 90, 0.6));
+}
+
+body.window-resizing {
+  user-select: none !important;
+}
+
+body.window-resizing * {
+  user-select: none !important;
+  pointer-events: none !important;
+}
+
+body.window-resizing .window-resize-overlay,
+body.window-resizing .window-resize-handle {
+  pointer-events: auto !important;
+}
+
+/* ----------------------------------------------------------------- Clean Header & Actions UX */
+
+.header-user-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-user-select .user-select {
+  flex: 1;
+  min-width: 110px;
+  max-width: 170px;
+}
+
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+  user-select: none;
+  font-weight: 500;
+}
+
+.badge-status.badge-locked {
+  background: rgba(192, 57, 43, 0.2);
+  border: 1px solid rgba(192, 57, 43, 0.4);
+  color: #ff9b90;
+}
+
+.badge-status.badge-private {
+  background: rgba(142, 68, 173, 0.2);
+  border: 1px solid rgba(142, 68, 173, 0.4);
+  color: #d7bde2;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.header-btn-group {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.header-btn-group .btn-icon {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 13px;
+  line-height: 1;
+  height: 26px;
+}
+
+.header-btn-group .btn-icon:first-child {
+  border-right: 1px solid var(--border-soft);
+}
+
+.header-btn-group .btn-icon:hover:not(:disabled) {
+  background: rgba(201, 162, 39, 0.2);
+}
+
+.header-btn-group .btn-icon:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.header-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.header-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 230px;
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    inset 0 0 16px rgba(201, 162, 39, 0.05);
+  z-index: 50000;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  animation: menuFadeIn 0.12s ease-out;
+}
+
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menu-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 4px 12px 2px 12px;
+  user-select: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.menu-item:hover {
+  background: rgba(201, 162, 39, 0.18);
+  color: #fff;
+}
+
+.menu-item:active {
+  background: rgba(201, 162, 39, 0.3);
+}
+
+.menu-item-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.menu-item-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.menu-item-desc {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 0;
+}
+
+
 

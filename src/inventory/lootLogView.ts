@@ -2,6 +2,7 @@ import OBR from "@owlbear-rodeo/sdk";
 import "@fontsource/cinzel/600.css";
 import "../styles/ui.css";
 import { LOOT_LOG_MODAL_ID } from "../constants";
+import { closeWindow, setupWindowResizer } from "../windowResizer";
 import { LootLogService } from "./LootLogService";
 import { TransferManager } from "./TransferManager";
 import type { LootLogEntry } from "../modules/inventory/UserInventoryModel";
@@ -73,30 +74,14 @@ function render(): void {
     }
   };
 
-  actions.append(quickUndoBtn, quickRedoBtn);
-
-  if (role === "GM") {
-    const clearBtn = el("button", "btn btn-danger");
-    clearBtn.textContent = "Clear Log";
-    clearBtn.title = "Clear all audit log history";
-    clearBtn.onclick = async () => {
-      if (confirm("Are you sure you want to permanently clear the loot audit log?")) {
-        try {
-          await LootLogService.clearLogs();
-          logs = [];
-          render();
-        } catch (e: any) {
-          alert(e.message || "Failed to clear logs.");
-        }
-      }
-    };
-    actions.append(clearBtn);
-  }
+  const historyGroup = el("div", "header-btn-group");
+  historyGroup.append(quickUndoBtn, quickRedoBtn);
+  actions.append(historyGroup);
 
   const closeBtn = el("button", "btn-icon");
   closeBtn.textContent = "✕";
   closeBtn.title = "Close";
-  closeBtn.onclick = () => void OBR.modal.close(LOOT_LOG_MODAL_ID);
+  closeBtn.onclick = () => void closeWindow(LOOT_LOG_MODAL_ID);
   actions.append(closeBtn);
 
   header.append(actions);
@@ -329,6 +314,19 @@ function render(): void {
 }
 
 OBR.onReady(async () => {
+  setupWindowResizer({
+    windowKey: "loot-log",
+    type: "popover",
+    popoverId: LOOT_LOG_MODAL_ID,
+    defaultWidth: 820,
+    defaultHeight: 600,
+    minWidth: 450,
+    minHeight: 380,
+    maxWidth: 1400,
+    maxHeight: 1200,
+    centered: true,
+  });
+
   role = await OBR.player.getRole();
   myUserId = await OBR.player.getId();
   logs = await LootLogService.getLogs();

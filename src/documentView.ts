@@ -14,6 +14,7 @@ import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
 import "./styles/paper.css";
 import { DOC_MODAL_ID } from "./constants";
+import { closeWindow, setupWindowResizer } from "./windowResizer";
 import { getLoot } from "./loot";
 import { renderIdCard } from "./idCard";
 import { renderDocument, type RenderedDocument } from "./paperRender";
@@ -135,7 +136,7 @@ function resetPrefs(): void {
 }
 
 function close(): void {
-  void OBR.modal.close(DOC_MODAL_ID);
+  void closeWindow(DOC_MODAL_ID);
 }
 
 function findEntry(items: Item[]): LootItem | undefined {
@@ -199,6 +200,19 @@ document.addEventListener("keydown", (event) => {
 applyPrefs();
 
 OBR.onReady(async () => {
+  setupWindowResizer({
+    windowKey: "document",
+    type: "popover",
+    popoverId: DOC_MODAL_ID,
+    defaultWidth: 1100,
+    defaultHeight: 820,
+    minWidth: 500,
+    minHeight: 400,
+    maxWidth: 1600,
+    maxHeight: 1200,
+    centered: true,
+  });
+
   render(await OBR.scene.items.getItems());
   OBR.scene.items.onChange(render);
 });

@@ -13,6 +13,9 @@ import {
 import { buildSparkle } from "./sparkle";
 import { saveBackup } from "./storage";
 import { isLootContainer, type LootContainer } from "./types";
+import { closeWindow, getSavedWindowSize } from "./windowResizer";
+
+export { closeWindow };
 
 export function getLoot(item: Item): LootContainer | undefined {
   const meta = item.metadata[LOOT_KEY];
@@ -298,11 +301,12 @@ export async function openLootPopover(
   tokenId: string,
   anchor: PopoverAnchor = {},
 ): Promise<void> {
+  const size = getSavedWindowSize("loot", { width: 360, height: 520 });
   await OBR.popover.open({
     id: LOOT_POPOVER_ID,
     url: `/loot.html?token=${encodeURIComponent(tokenId)}`,
-    width: 360,
-    height: 520,
+    width: size.width,
+    height: size.height,
     hidePaper: true,
     anchorElementId: anchor.elementId,
     anchorPosition: anchor.position,
@@ -312,22 +316,52 @@ export async function openLootPopover(
   });
 }
 
-/** Anchor position roughly centered in the viewport. */
+/** Anchor position roughly centered in the viewport for anchored loot popovers. */
 export async function centerAnchor(): Promise<{ left: number; top: number }> {
-  const [width, height] = await Promise.all([
-    OBR.viewport.getWidth(),
-    OBR.viewport.getHeight(),
-  ]);
-  return { left: width / 2, top: height / 4 };
+  try {
+    const [width, height] = await Promise.all([
+      OBR.viewport.getWidth(),
+      OBR.viewport.getHeight(),
+    ]);
+    return { left: width / 2, top: height / 4 };
+  } catch {
+    return {
+      left: (typeof window !== "undefined" ? window.innerWidth : 1200) / 2,
+      top: (typeof window !== "undefined" ? window.innerHeight : 800) / 4,
+    };
+  }
+}
+
+/** Anchor position centered both horizontally and vertically in the viewport. */
+export async function centerViewportAnchor(): Promise<{ left: number; top: number }> {
+  try {
+    const [width, height] = await Promise.all([
+      OBR.viewport.getWidth(),
+      OBR.viewport.getHeight(),
+    ]);
+    return { left: Math.round(width / 2), top: Math.round(height / 2) };
+  } catch {
+    return {
+      left: Math.round((typeof window !== "undefined" ? window.innerWidth : 1200) / 2),
+      top: Math.round((typeof window !== "undefined" ? window.innerHeight : 800) / 2),
+    };
+  }
 }
 
 export async function openEditorModal(tokenId: string): Promise<void> {
-  await OBR.modal.open({
+  const size = getSavedWindowSize("editor", { width: 980, height: 660 });
+  const center = await centerViewportAnchor();
+  await OBR.popover.open({
     id: EDITOR_MODAL_ID,
     url: `/editor.html?token=${encodeURIComponent(tokenId)}`,
-    width: 980,
-    height: 660,
+    width: size.width,
+    height: size.height,
     hidePaper: true,
+    disableClickAway: true,
+    anchorReference: "POSITION",
+    anchorPosition: center,
+    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
   });
 }
 
@@ -336,12 +370,19 @@ export async function openDocumentModal(
   docId: string,
   size: { width: number; height: number } = { width: 1100, height: 820 },
 ): Promise<void> {
-  await OBR.modal.open({
+  const savedSize = getSavedWindowSize("document", size);
+  const center = await centerViewportAnchor();
+  await OBR.popover.open({
     id: DOC_MODAL_ID,
     url: `/document.html?token=${encodeURIComponent(tokenId)}&doc=${encodeURIComponent(docId)}`,
-    width: size.width,
-    height: size.height,
+    width: savedSize.width,
+    height: savedSize.height,
     hidePaper: true,
+    disableClickAway: true,
+    anchorReference: "POSITION",
+    anchorPosition: center,
+    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
   });
 }
 
@@ -350,34 +391,55 @@ export async function openUserDocumentModal(
   docId: string,
   size: { width: number; height: number } = { width: 1100, height: 820 },
 ): Promise<void> {
-  await OBR.modal.open({
+  const savedSize = getSavedWindowSize("document", size);
+  const center = await centerViewportAnchor();
+  await OBR.popover.open({
     id: DOC_MODAL_ID,
     url: `/document.html?user=${encodeURIComponent(userId)}&doc=${encodeURIComponent(docId)}`,
-    width: size.width,
-    height: size.height,
+    width: savedSize.width,
+    height: savedSize.height,
     hidePaper: true,
+    disableClickAway: true,
+    anchorReference: "POSITION",
+    anchorPosition: center,
+    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
   });
 }
 
 export async function openInventoryModal(targetUserId?: string): Promise<void> {
+  const size = getSavedWindowSize("inventory", { width: 480, height: 620 });
   const url = targetUserId
     ? `/inventory.html?user=${encodeURIComponent(targetUserId)}`
     : `/inventory.html`;
-  await OBR.modal.open({
+  const center = await centerViewportAnchor();
+  await OBR.popover.open({
     id: INVENTORY_MODAL_ID,
     url,
-    width: 480,
-    height: 620,
+    width: size.width,
+    height: size.height,
     hidePaper: true,
+    disableClickAway: true,
+    anchorReference: "POSITION",
+    anchorPosition: center,
+    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
   });
 }
 
 export async function openLootLogModal(): Promise<void> {
-  await OBR.modal.open({
+  const size = getSavedWindowSize("loot-log", { width: 820, height: 600 });
+  const center = await centerViewportAnchor();
+  await OBR.popover.open({
     id: LOOT_LOG_MODAL_ID,
     url: `/loot-log.html`,
-    width: 820,
-    height: 600,
+    width: size.width,
+    height: size.height,
     hidePaper: true,
+    disableClickAway: true,
+    anchorReference: "POSITION",
+    anchorPosition: center,
+    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
   });
 }

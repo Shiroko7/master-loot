@@ -19,6 +19,7 @@ import {
   setBadgeImage,
   type BadgeCorner,
 } from "./loot";
+import { getSavedWindowSize, setupWindowResizer } from "./windowResizer";
 
 const app = document.getElementById("app")!;
 let role: "GM" | "PLAYER" = "PLAYER";
@@ -382,6 +383,23 @@ async function refresh(ready: boolean): Promise<void> {
 }
 
 OBR.onReady(async () => {
+  const savedSize = getSavedWindowSize("action", { width: 340, height: 460 });
+  if (savedSize.width !== 340 || savedSize.height !== 460) {
+    void OBR.action.setWidth(savedSize.width);
+    void OBR.action.setHeight(savedSize.height);
+  }
+  setupWindowResizer({
+    windowKey: "action",
+    type: "action",
+    defaultWidth: 340,
+    defaultHeight: 460,
+    minWidth: 280,
+    minHeight: 340,
+    maxWidth: 800,
+    maxHeight: 1000,
+    centered: false,
+  });
+
   role = await OBR.player.getRole();
   [badgeCorner, badgeImage] = await Promise.all([
     getBadgeCorner(),

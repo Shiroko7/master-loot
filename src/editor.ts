@@ -14,6 +14,7 @@ import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
 import "./styles/paper.css";
 import { EDITOR_MODAL_ID, MAX_DOC_CHARS } from "./constants";
+import { closeWindow, setupWindowResizer } from "./windowResizer";
 import { fetchLootItem, parseItemLink, safeHttpUrl } from "./fiveETools";
 import { getLoot, getToken, saveLoot } from "./loot";
 import { renderIdCard } from "./idCard";
@@ -126,7 +127,7 @@ async function closeEditor(): Promise<void> {
     return;
   }
   dirty = false;
-  await OBR.modal.close(EDITOR_MODAL_ID);
+  await closeWindow(EDITOR_MODAL_ID);
 }
 
 // --- shell -----------------------------------------------------------------
@@ -1061,6 +1062,19 @@ document.addEventListener("keydown", (event) => {
 // --- init --------------------------------------------------------------------
 
 OBR.onReady(async () => {
+  setupWindowResizer({
+    windowKey: "editor",
+    type: "popover",
+    popoverId: EDITOR_MODAL_ID,
+    defaultWidth: 980,
+    defaultHeight: 660,
+    minWidth: 550,
+    minHeight: 450,
+    maxWidth: 1600,
+    maxHeight: 1200,
+    centered: true,
+  });
+
   const token = await getToken(tokenId);
   if (!token) {
     app.innerHTML = "";

@@ -740,3 +740,28 @@ test("Ctrl+Z & Ctrl+Y: undoMostRecent and redoMostRecent cycle actions properly"
   assert.equal(LocalStorageAdapter.getInventory(userId).items[0].name, "Swift Boots");
 });
 
+test("WindowResizer: getSavedWindowSize and saveWindowSize persist window sizes", async () => {
+  const { getSavedWindowSize, saveWindowSize } = await import("../src/windowResizer.ts");
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => store.set(k, v),
+  };
+
+  const defaults = { width: 480, height: 620 };
+  assert.deepEqual(getSavedWindowSize("inventory", defaults), defaults);
+
+  saveWindowSize("inventory", { width: 600, height: 750 });
+  const retrieved = getSavedWindowSize("inventory", defaults);
+  assert.equal(retrieved.width, 600);
+  assert.equal(retrieved.height, 750);
+
+  // Corrupted / invalid data falls back to defaults
+  store.set("master-loot:window-size:inventory", "{ malformed json");
+  assert.deepEqual(getSavedWindowSize("inventory", defaults), defaults);
+
+  store.set("master-loot:window-size:inventory", JSON.stringify({ width: 10, height: 10 }));
+  assert.deepEqual(getSavedWindowSize("inventory", defaults), defaults);
+});
+
+
