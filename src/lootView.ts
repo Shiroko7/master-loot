@@ -258,13 +258,15 @@ function renderInventorySlot(item: UserInventoryItem, tokenName: string): HTMLEl
   returnBtn.title = "Return item to this loot bag";
   returnBtn.onclick = async (e) => {
     e.stopPropagation();
+    const quantity = promptStackQuantity(item, "Return");
+    if (quantity === undefined) return;
     returnBtn.disabled = true;
     returnBtn.textContent = "…";
     const res = await TransferManager.userToToken({
       sourceUserId: myId,
       sourceUserName: myName,
       itemId: item.id,
-      quantity: 1,
+      quantity,
       tokenId,
       tokenName,
     });
@@ -283,12 +285,14 @@ function renderInventorySlot(item: UserInventoryItem, tokenName: string): HTMLEl
   delBtn.title = "Delete Item (Logged)";
   delBtn.onclick = async (e) => {
     e.stopPropagation();
-    if (confirm(`Delete "${item.name}" from personal inventory?`)) {
+    const quantity = promptStackQuantity(item, "Delete");
+    if (quantity !== undefined && confirm(`Delete ${quantity} × "${item.name}" from personal inventory?`)) {
       delBtn.disabled = true;
       const res = await TransferManager.deleteItemFromInventory({
         userId: myId,
         userName: myName,
         itemId: item.id,
+        quantity,
       });
       if (!res.success) {
         alert(res.error || "Failed to delete item.");
@@ -310,6 +314,17 @@ function renderInventorySlot(item: UserInventoryItem, tokenName: string): HTMLEl
   };
 
   return slot;
+}
+
+function promptStackQuantity(item: UserInventoryItem, action: string): number | undefined {
+  if (item.quantity <= 1) return 1;
+  const half = Math.max(1, Math.floor(item.quantity / 2));
+  const raw = window.prompt(
+    `${action} how many "${item.name}"? Enter an amount from 1 to ${item.quantity}.`,
+    String(half),
+  );
+  if (raw === null) return undefined;
+  return Math.min(item.quantity, Math.max(1, parseInt(raw, 10) || half));
 }
 
 function render(items: Item[]): void {

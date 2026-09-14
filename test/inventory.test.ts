@@ -16,7 +16,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  CURRENCY_INVENTORY_SECTION,
+  DEFAULT_INVENTORY_SECTIONS,
   createDefaultInventory,
+  getCurrencyStackKind,
   lootItemToUserInventoryItem,
   userInventoryItemToLootItem,
   sanitizeInventoryItem,
@@ -34,7 +37,72 @@ test("UserInventoryModel: creates default inventory with open/shared flags", () 
   assert.equal(inv.isPublic, true);
   assert.equal(inv.isLocked, false);
   assert.deepEqual(inv.items, []);
+  assert.deepEqual(inv.sections, [...DEFAULT_INVENTORY_SECTIONS]);
   assert.ok(inv.updatedAt > 0);
+});
+
+test("Currency stacks split denominations and merge by coin kind", () => {
+  const inv = createDefaultInventory("coin-holder");
+  const purse: LootItem = {
+    id: "purse-1",
+    kind: "currency",
+    name: "Coin purse",
+    quantity: 1,
+    rarity: "none",
+    icon: "🪙",
+    coins: { gp: 100, sp: 25 },
+  };
+
+  const incoming = lootItemToUserInventoryItem(purse);
+  TransferManager.addItemToInventory(inv, incoming, incoming.quantity);
+
+  assert.equal(inv.items.length, 2);
+  const gold = inv.items.find((item) => getCurrencyStackKind(item) === "gp");
+  const silver = inv.items.find((item) => getCurrencyStackKind(item) === "sp");
+  assert.ok(gold);
+  assert.ok(silver);
+  assert.equal(gold.quantity, 100);
+  assert.equal(silver.quantity, 25);
+  assert.equal(gold.section, CURRENCY_INVENTORY_SECTION);
+
+  const secondPurse = lootItemToUserInventoryItem({
+    ...purse,
+    id: "purse-2",
+    coins: { gp: 50 },
+  });
+  TransferManager.addItemToInventory(inv, secondPurse, secondPurse.quantity);
+  assert.equal(inv.items.length, 2);
+  assert.equal(inv.items.find((item) => getCurrencyStackKind(item) === "gp")?.quantity, 150);
+
+  const removed = TransferManager.removeItemFromInventory(inv, gold.id, 75);
+  assert.ok(removed);
+  assert.equal(removed.quantity, 75);
+  assert.equal(removed.data.coins.gp, 75);
+  assert.equal(inv.items.find((item) => getCurrencyStackKind(item) === "gp")?.quantity, 75);
+
+  const returnedToLoot = userInventoryItemToLootItem(removed);
+  assert.equal(returnedToLoot.quantity, 1);
+  assert.deepEqual(returnedToLoot.coins, { gp: 75 });
+});
+
+test("Currency migration turns a legacy multi-denomination item into stacks", () => {
+  const state = sanitizeInventoryState(
+    {
+      userId: "legacy-coins",
+      items: [{
+        id: "legacy-purse",
+        name: "Old purse",
+        img: "🪙",
+        quantity: 1,
+        data: { kind: "currency", coins: { pp: 2, cp: 17 } },
+      }],
+    },
+    "fallback",
+  );
+
+  assert.equal(state.items.length, 2);
+  assert.equal(state.items.find((item) => getCurrencyStackKind(item) === "pp")?.quantity, 2);
+  assert.equal(state.items.find((item) => getCurrencyStackKind(item) === "cp")?.quantity, 17);
 });
 
 test("UserInventoryModel: converts LootItem to UserInventoryItem and back", () => {
@@ -129,6 +197,12 @@ test("LocalStorageAdapter: saves, gets, and clears inventory with fallback", () 
   LocalStorageAdapter.clearInventory(userId);
   const cleared = LocalStorageAdapter.getInventory(userId);
   assert.equal(cleared.items.length, 0);
+});
+
+test("LocalStorageAdapter: claims cross-window operations only once", () => {
+  const operationId = `operation-${Date.now()}-${Math.random()}`;
+  assert.equal(LocalStorageAdapter.claimOperation(operationId), true);
+  assert.equal(LocalStorageAdapter.claimOperation(operationId), false);
 });
 
 test("ExportManager: computes hash and parses valid JSON backup", async () => {

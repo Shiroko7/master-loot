@@ -6,6 +6,9 @@ import { closeWindow, setupWindowResizer } from "../windowResizer";
 import { LocalStorageAdapter } from "../storage/LocalStorageAdapter";
 import { ExportManager } from "../storage/ExportManager";
 import {
+  DEFAULT_INVENTORY_SECTIONS,
+  OTHER_INVENTORY_SECTION,
+  type DefaultInventorySection,
   type UserInventoryItem,
   type UserInventoryState,
 } from "../modules/inventory/UserInventoryModel";
@@ -139,17 +142,19 @@ function promptCreateOrEditItem(existingItem?: UserInventoryItem, defaultSection
   sectionSpan.textContent = "Section / Category:";
   const sectionSelect = el("select");
 
-  const noneOpt = el("option");
-  noneOpt.value = "";
-  noneOpt.textContent = "(Uncategorized / General)";
-  sectionSelect.append(noneOpt);
-
-  const knownSections = state.sections || ["Equipment", "Consumables", "Treasure"];
+  const knownSections = Array.from(new Set([
+    ...(state.sections?.length ? state.sections : DEFAULT_INVENTORY_SECTIONS),
+    OTHER_INVENTORY_SECTION,
+  ]));
   for (const sec of knownSections) {
     const opt = el("option");
     opt.value = sec;
     opt.textContent = sec;
-    if (existingItem?.section === sec || (!existingItem && defaultSection === sec)) {
+    if (
+      existingItem?.section === sec ||
+      (!!existingItem && !existingItem.section && sec === OTHER_INVENTORY_SECTION) ||
+      (!existingItem && (defaultSection === sec || (!defaultSection && sec === OTHER_INVENTORY_SECTION)))
+    ) {
       opt.selected = true;
     }
     sectionSelect.append(opt);
@@ -252,7 +257,7 @@ function promptCreateOrEditItem(existingItem?: UserInventoryItem, defaultSection
     const img = iconInput.value.trim() || "⚔️";
     const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
 
-    let chosenSection: string | undefined = undefined;
+    let chosenSection: string = OTHER_INVENTORY_SECTION;
     if (sectionSelect.value === "__new__") {
       const customSec = newSectionInput.value.trim();
       if (customSec) {
@@ -263,7 +268,7 @@ function promptCreateOrEditItem(existingItem?: UserInventoryItem, defaultSection
         }
       }
     } else if (sectionSelect.value) {
-      chosenSection = sectionSelect.value;
+      chosenSection = sectionSelect.value || OTHER_INVENTORY_SECTION;
     }
 
     const rawTags = tagsInput.value
@@ -359,7 +364,7 @@ function promptAddSection(): void {
     if (!secName) return;
 
     if (!state.sections) {
-      state.sections = ["Equipment", "Consumables", "Treasure"];
+      state.sections = [...DEFAULT_INVENTORY_SECTIONS];
     }
 
     if (!state.sections.includes(secName)) {
@@ -376,15 +381,15 @@ function promptAddSection(): void {
  */
 function deleteSection(secName: string): void {
   const state = getCurrentState();
-  if (!confirm(`Delete section "${secName}"? Items in it will move to Uncategorized.`)) {
+  if (!confirm(`Delete section "${secName}"? Items in it will move to Other.`)) {
     return;
   }
 
   // Clear section on any items
   for (const it of state.items) {
     if (it.section === secName) {
-      it.section = undefined;
-      if (it.data) delete it.data.section;
+      it.section = OTHER_INVENTORY_SECTION;
+      if (it.data) it.data.section = OTHER_INVENTORY_SECTION;
     }
   }
 
@@ -410,6 +415,17 @@ function promptTransferItem(item: UserInventoryItem): void {
   qtyInput.max = String(item.quantity);
   qtyInput.value = "1";
   qtyLabel.append(qtySpan, qtyInput);
+
+  if (item.quantity > 1) {
+    const halfBtn = el("button", "btn btn-xs");
+    halfBtn.type = "button";
+    halfBtn.textContent = "Half";
+    halfBtn.title = "Transfer half of this stack";
+    halfBtn.onclick = () => {
+      qtyInput.value = String(Math.max(1, Math.floor(item.quantity / 2)));
+    };
+    qtyLabel.append(halfBtn);
+  }
 
   const targetLabel = el("label", "field");
   const targetSpan = el("span");
@@ -499,6 +515,72 @@ function promptTransferItem(item: UserInventoryItem): void {
       }
     }
 
+    closeDialog();
+    render();
+  };
+}
+
+function promptDeleteItem(item: UserInventoryItem): void {
+  if (item.quantity <= 1) {
+    if (!confirm(`Delete "${item.name}" from inventory?`)) return;
+    void TransferManager.deleteItemFromInventory({
+      userId: activeUserId,
+      userName: getActiveUserName(),
+      itemId: item.id,
+      quantity: 1,
+    }).then((res) => {
+      if (!res.success) alert(res.error || "Failed to delete item.");
+      render();
+    });
+    return;
+  }
+
+  const form = el("div");
+  const title = el("h3");
+  title.textContent = `Delete from "${item.name}"`;
+
+  const qtyLabel = el("label", "field");
+  const qtySpan = el("span");
+  qtySpan.textContent = `Amount to delete (max ${item.quantity}):`;
+  const qtyInput = el("input");
+  qtyInput.type = "number";
+  qtyInput.min = "1";
+  qtyInput.max = String(item.quantity);
+  qtyInput.value = "1";
+  qtyLabel.append(qtySpan, qtyInput);
+
+  const halfBtn = el("button", "btn btn-xs");
+  halfBtn.type = "button";
+  halfBtn.textContent = "Half";
+  halfBtn.title = "Delete half of this stack";
+  halfBtn.onclick = () => {
+    qtyInput.value = String(Math.max(1, Math.floor(item.quantity / 2)));
+  };
+  qtyLabel.append(halfBtn);
+
+  const actions = el("div", "dialog-actions");
+  const cancelBtn = el("button", "btn");
+  cancelBtn.textContent = "Cancel";
+  const submitBtn = el("button", "btn btn-danger");
+  submitBtn.textContent = "Delete";
+  actions.append(cancelBtn, submitBtn);
+  form.append(title, qtyLabel, actions);
+
+  const closeDialog = showDialog(form);
+  cancelBtn.onclick = closeDialog;
+  submitBtn.onclick = async () => {
+    const quantity = Math.min(
+      item.quantity,
+      Math.max(1, parseInt(qtyInput.value, 10) || 1),
+    );
+    submitBtn.disabled = true;
+    const res = await TransferManager.deleteItemFromInventory({
+      userId: activeUserId,
+      userName: getActiveUserName(),
+      itemId: item.id,
+      quantity,
+    });
+    if (!res.success) alert(res.error || "Failed to delete item.");
     closeDialog();
     render();
   };
@@ -604,18 +686,9 @@ function renderItemSlot(
     delBtn.title = "Delete Item (Logged)";
     delBtn.onclick = async (e) => {
       e.stopPropagation();
-      if (confirm(`Delete "${item.name}" from inventory?`)) {
-        delBtn.disabled = true;
-        const res = await TransferManager.deleteItemFromInventory({
-          userId: activeUserId,
-          userName: getActiveUserName(),
-          itemId: item.id,
-        });
-        if (!res.success) {
-          alert(res.error || "Failed to delete item.");
-        }
-        render();
-      }
+      delBtn.disabled = true;
+      promptDeleteItem(item);
+      delBtn.disabled = false;
     };
 
     controls.append(editBtn, delBtn);
@@ -1097,7 +1170,7 @@ function render(): void {
     // Determine sections to show
     const configuredSections = state.sections && state.sections.length > 0
       ? [...state.sections]
-      : ["Equipment", "Consumables", "Treasure"];
+      : [...DEFAULT_INVENTORY_SECTIONS];
 
     // Find any section assigned to an item that isn't in configuredSections
     for (const item of state.items) {
@@ -1106,18 +1179,20 @@ function render(): void {
       }
     }
 
-    // Check if there are items with no section
-    const hasUncategorized = state.items.some((i) => !i.section);
-    const sectionsToRender = [...configuredSections];
-    if (hasUncategorized) {
-      sectionsToRender.push(""); // empty string represents Uncategorized
-    }
+    // Older or external clients may still send an item without a section;
+    // show it in Other. Empty sections stay available in the selector without
+    // cluttering the player-facing inventory.
+    const sectionsToRender = configuredSections;
 
     for (const sec of sectionsToRender) {
-      const secItems = filteredItems.filter((i) => (sec ? i.section === sec : !i.section));
+      const secItems = filteredItems.filter(
+        (i) => (i.section || OTHER_INVENTORY_SECTION) === sec,
+      );
 
-      // Don't render empty sections if filtering by search/tag and they have no matches
-      if (secItems.length === 0 && (searchQuery || activeTagFilter)) {
+      const isDefaultSection = DEFAULT_INVENTORY_SECTIONS.includes(
+        sec as DefaultInventorySection,
+      );
+      if (secItems.length === 0 && (isDefaultSection || searchQuery || activeTagFilter)) {
         continue;
       }
 
@@ -1144,7 +1219,7 @@ function render(): void {
             if (payload.item?.id) {
               const target = state.items.find((i) => i.id === payload.item.id);
               if (target) {
-                target.section = sec || undefined;
+                target.section = sec;
                 if (target.data) target.data.section = target.section;
                 saveCurrentState(state);
               }
@@ -1161,7 +1236,7 @@ function render(): void {
       chev.textContent = isCollapsed ? "▸" : "▾";
 
       const titleSpan = el("span", "section-head-title");
-      titleSpan.textContent = sec ? `📁 ${sec}` : "📦 Uncategorized";
+      titleSpan.textContent = `📁 ${sec}`;
 
       const countSpan = el("span", "section-head-count");
       countSpan.textContent = String(secItems.length);
@@ -1175,7 +1250,7 @@ function render(): void {
         // Quick add item to this section
         const quickAddBtn = el("button", "btn btn-xs");
         quickAddBtn.textContent = "+ Item";
-        quickAddBtn.title = `Add item to ${sec || "Uncategorized"}`;
+        quickAddBtn.title = `Add item to ${sec}`;
         quickAddBtn.onclick = (e) => {
           e.stopPropagation();
           promptCreateOrEditItem(undefined, sec);
@@ -1183,7 +1258,7 @@ function render(): void {
         right.append(quickAddBtn);
 
         // Delete section button (only for user-defined named sections)
-        if (sec) {
+        if (!DEFAULT_INVENTORY_SECTIONS.includes(sec as DefaultInventorySection)) {
           const delSecBtn = el("button", "btn btn-xs btn-danger");
           delSecBtn.textContent = "✕";
           delSecBtn.title = `Delete section "${sec}"`;
@@ -1338,7 +1413,13 @@ OBR.onReady(async () => {
       if (activeUserId === msg.senderId) {
         render();
       }
-    } else if (msg.action === "TRANSFER_RESULT" || msg.action === "TRANSFER_ITEM" || msg.action === "GM_MODIFY_INVENTORY") {
+    } else if (msg.action === "GM_MODIFY_INVENTORY") {
+      // This also updates another GM inventory window editing the same
+      // player's inventory. The GM's local peer cache is not shared between
+      // popover documents, so carry the complete state in the message.
+      peerInventories.set(msg.targetUserId, msg.state);
+      if (activeUserId === msg.targetUserId) render();
+    } else if (msg.action === "TRANSFER_RESULT" || msg.action === "TRANSFER_ITEM") {
       render();
     }
   });

@@ -13,6 +13,35 @@ interface VersionedStoragePayload {
 export class LocalStorageAdapter {
   private static memoryFallback = new Map<string, string>();
 
+  /**
+   * Claim a cross-window operation exactly once. Transfer messages are sent
+   * to every open popover so all views can refresh, but only one popover may
+   * apply an additive operation such as receiving an item.
+   */
+  public static claimOperation(operationId: string): boolean {
+    if (!operationId) return true;
+
+    const key = "master-loot:inventory:processed-operations";
+    let processed: string[] = [];
+    try {
+      const raw = this.rawGet(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          processed = parsed.filter((value): value is string => typeof value === "string");
+        }
+      }
+    } catch {
+      processed = [];
+    }
+
+    if (processed.includes(operationId)) return false;
+
+    processed.push(operationId);
+    this.rawSet(key, JSON.stringify(processed.slice(-200)));
+    return true;
+  }
+
   public static storageKey(userId: string): string {
     return `master-loot:inventory:${userId}`;
   }

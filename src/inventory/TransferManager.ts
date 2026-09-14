@@ -2,6 +2,11 @@ import OBR from "@owlbear-rodeo/sdk";
 import { getLoot, getToken, saveLoot } from "../loot";
 import { LocalStorageAdapter } from "../storage/LocalStorageAdapter";
 import {
+  CURRENCY_INVENTORY_SECTION,
+  defaultInventorySectionForKind,
+  currencyPurseForInventoryItem,
+  expandCurrencyInventoryItem,
+  getCurrencyStackKind,
   lootItemToUserInventoryItem,
   userInventoryItemToLootItem,
   type LootLogEntry,
@@ -10,7 +15,7 @@ import {
 } from "../modules/inventory/UserInventoryModel";
 import { LootLogService } from "./LootLogService";
 import { NetworkProtocol, type SocketMessage } from "./NetworkProtocol";
-import type { Rarity } from "../types";
+import type { LootItem, Rarity } from "../types";
 
 interface PendingTransferPromise {
   resolve: (value: { success: boolean; item?: UserInventoryItem; error?: string }) => void;
@@ -30,6 +35,38 @@ export class TransferManager {
     item: UserInventoryItem,
     quantityToAdd: number,
   ): void {
+    if (item.data?.kind === "currency") {
+      const currencyStacks = expandCurrencyInventoryItem(item).filter(
+        (stack) => !!getCurrencyStackKind(stack),
+      );
+
+      if (currencyStacks.length > 0) {
+        for (const stack of currencyStacks) {
+          const coinKind = getCurrencyStackKind(stack);
+          if (!coinKind) continue;
+
+          const existing = inventory.items.find(
+            (candidate) => getCurrencyStackKind(candidate) === coinKind,
+          );
+          if (existing) {
+            existing.quantity += stack.quantity;
+            existing.section = CURRENCY_INVENTORY_SECTION;
+            existing.data = {
+              ...existing.data,
+              kind: "currency",
+              coinKind,
+              coins: { [coinKind]: existing.quantity },
+              section: CURRENCY_INVENTORY_SECTION,
+            };
+          } else {
+            inventory.items.push(stack);
+          }
+        }
+        inventory.updatedAt = Date.now();
+        return;
+      }
+    }
+
     const existing = inventory.items.find(
       (i) =>
         i.name === item.name &&
@@ -86,7 +123,9 @@ export class TransferManager {
     }
 
     const inv = LocalStorageAdapter.getInventory(params.userId);
-    const section = params.item.section?.trim() || undefined;
+    const itemKind = params.item.data?.kind;
+    const section =
+      params.item.section?.trim() || defaultInventorySectionForKind(itemKind);
     const tags = Array.isArray(params.item.tags)
       ? params.item.tags.map((t) => t.trim()).filter((t) => t.length > 0)
       : [];
@@ -175,7 +214,10 @@ export class TransferManager {
       return { success: false, error: "Item not found in inventory." };
     }
 
-    const qtyToDelete = params.quantity ? Math.min(params.quantity, targetItem.quantity) : targetItem.quantity;
+    const requestedQuantity = Number.isFinite(params.quantity)
+      ? Math.max(1, Math.floor(params.quantity || targetItem.quantity))
+      : targetItem.quantity;
+    const qtyToDelete = Math.min(requestedQuantity, targetItem.quantity);
     const deducted = this.removeItemFromInventory(inv, params.itemId, qtyToDelete);
     if (!deducted) {
       return { success: false, error: "Failed to remove item." };
@@ -224,15 +266,151 @@ export class TransferManager {
     if (idx === -1) return null;
 
     const current = inventory.items[idx];
-    if (current.quantity <= quantityToRemove) {
+    const qty = Math.max(1, Math.floor(quantityToRemove));
+    const makeSnapshot = (quantity: number): UserInventoryItem => {
+      const snapshot: UserInventoryItem = {
+        ...current,
+        quantity,
+        tags: current.tags ? [...current.tags] : current.tags,
+        data: { ...current.data },
+      };
+      const coinKind = getCurrencyStackKind(current);
+      if (coinKind) {
+        snapshot.section = CURRENCY_INVENTORY_SECTION;
+        snapshot.data = {
+          ...snapshot.data,
+          kind: "currency",
+          coinKind,
+          coins: { [coinKind]: quantity },
+          section: CURRENCY_INVENTORY_SECTION,
+        };
+      }
+      return snapshot;
+    };
+
+    if (current.quantity <= qty) {
       inventory.items.splice(idx, 1);
       inventory.updatedAt = Date.now();
-      return { ...current };
+      return makeSnapshot(current.quantity);
     } else {
-      current.quantity -= quantityToRemove;
+      current.quantity -= qty;
+      const coinKind = getCurrencyStackKind(current);
+      if (coinKind) {
+        current.section = CURRENCY_INVENTORY_SECTION;
+        current.data = {
+          ...current.data,
+          kind: "currency",
+          coinKind,
+          coins: { [coinKind]: current.quantity },
+          section: CURRENCY_INVENTORY_SECTION,
+        };
+      }
       inventory.updatedAt = Date.now();
-      return { ...current, quantity: quantityToRemove };
+      return makeSnapshot(qty);
     }
+  }
+
+  /** Remove the exact item represented by an audit snapshot. */
+  private static removeLoggedItemFromInventory(
+    inventory: UserInventoryState,
+    entry: LootLogEntry,
+  ): UserInventoryItem | null {
+    const snapshot = entry.itemSnapshot;
+    if (snapshot?.data?.kind !== "currency") {
+      return this.removeItemFromInventory(inventory, entry.itemId, entry.quantity);
+    }
+
+    const purse = currencyPurseForInventoryItem(snapshot);
+    const amounts = Object.entries(purse).filter(([, amount]) => amount > 0) as [string, number][];
+    if (amounts.length === 0) {
+      return this.removeItemFromInventory(inventory, entry.itemId, entry.quantity);
+    }
+
+    const stacks = amounts.map(([kind, amount]) => {
+      const stack = inventory.items.find((item) => getCurrencyStackKind(item) === kind);
+      return { stack, amount };
+    });
+    if (stacks.some(({ stack, amount }) => !stack || stack.quantity < amount)) {
+      return null;
+    }
+
+    let firstRemoved: UserInventoryItem | null = null;
+    for (const { stack, amount } of stacks) {
+      if (!stack) continue;
+      const removed = this.removeItemFromInventory(inventory, stack.id, amount);
+      if (removed && !firstRemoved) firstRemoved = removed;
+    }
+    return firstRemoved;
+  }
+
+  private static addItemToLoot(items: LootItem[], item: LootItem): void {
+    const existing = items.find((candidate) =>
+      candidate.name === item.name && candidate.kind === item.kind,
+    );
+
+    if (!existing) {
+      items.push(item);
+      return;
+    }
+
+    if (item.kind === "currency") {
+      existing.coins = { ...(existing.coins || {}) };
+      for (const [kind, amount] of Object.entries(item.coins || {})) {
+        const value = Number(amount) || 0;
+        if (value > 0) {
+          const coinKind = kind as keyof typeof existing.coins;
+          existing.coins[coinKind] = (existing.coins[coinKind] || 0) + value;
+        }
+      }
+      existing.quantity = 1;
+    } else {
+      existing.quantity += item.quantity;
+    }
+  }
+
+  private static removeItemFromLoot(
+    items: LootItem[],
+    itemId: string,
+    itemName: string,
+    snapshot?: UserInventoryItem,
+    quantity = 1,
+  ): void {
+    if (snapshot?.data?.kind === "currency") {
+      const remaining = { ...currencyPurseForInventoryItem(snapshot) };
+      const candidates = items.filter(
+        (item) => item.kind === "currency" && (item.id === itemId || item.name === itemName),
+      );
+
+      for (const candidate of candidates) {
+        for (const [kind, amount] of Object.entries(remaining)) {
+          const needed = Number(amount) || 0;
+          const available = Number(candidate.coins?.[kind as keyof typeof candidate.coins]) || 0;
+          if (needed <= 0 || available <= 0) continue;
+          const taken = Math.min(needed, available);
+          candidate.coins = { ...(candidate.coins || {}) };
+          const coinKind = kind as keyof typeof candidate.coins;
+          candidate.coins[coinKind] = available - taken;
+          remaining[kind as keyof typeof remaining] = needed - taken;
+        }
+
+        if (Object.values(remaining).every((amount) => (Number(amount) || 0) <= 0)) {
+          break;
+        }
+      }
+
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index];
+        if (item.kind === "currency" && Object.values(item.coins || {}).every((amount) => !amount || amount <= 0)) {
+          items.splice(index, 1);
+        }
+      }
+      return;
+    }
+
+    const index = items.findIndex((item) => item.id === itemId || item.name === itemName);
+    if (index === -1) return;
+    if (items[index].quantity <= quantity) items.splice(index, 1);
+    else items[index].quantity -= quantity;
   }
 
   /**
@@ -272,6 +450,7 @@ export class TransferManager {
 
         case "TRANSFER_ITEM": {
           if (msg.targetUserId === myId) {
+            if (!LocalStorageAdapter.claimOperation(msg.transferId)) break;
             const current = LocalStorageAdapter.getInventory(myId);
             this.addItemToInventory(current, msg.item, msg.item.quantity);
             LocalStorageAdapter.saveInventory(myId, current);
@@ -404,6 +583,7 @@ export class TransferManager {
             transferredInvItem,
             msg.userId,
             msg.userName,
+            msg.transferId,
           );
         }
 
@@ -452,12 +632,7 @@ export class TransferManager {
           quantity: msg.quantity,
         });
 
-        const existing = loot.items.find((i) => i.name === lootItemToAdd.name && i.kind === lootItemToAdd.kind);
-        if (existing) {
-          existing.quantity += msg.quantity;
-        } else {
-          loot.items.push(lootItemToAdd);
-        }
+        this.addItemToLoot(loot.items, lootItemToAdd);
         await saveLoot(token.id, loot);
 
         const logEntry: LootLogEntry = {
@@ -547,7 +722,13 @@ export class TransferManager {
         LocalStorageAdapter.saveInventory(myId, myInv);
         await NetworkProtocol.syncInventory(myInv, myName);
       } else {
-        await NetworkProtocol.sendTransferItem(params.targetUserId, invItem, myId, myName);
+        await NetworkProtocol.sendTransferItem(
+          params.targetUserId,
+          invItem,
+          myId,
+          myName,
+          crypto.randomUUID(),
+        );
       }
 
       const logEntry: LootLogEntry = {
@@ -658,12 +839,7 @@ export class TransferManager {
       if (!loot) return { success: false, error: "Token is not a loot container." };
 
       const lootItemToAdd = userInventoryItemToLootItem({ ...deducted, quantity: params.quantity });
-      const existing = loot.items.find((i) => i.name === lootItemToAdd.name && i.kind === lootItemToAdd.kind);
-      if (existing) {
-        existing.quantity += params.quantity;
-      } else {
-        loot.items.push(lootItemToAdd);
-      }
+      this.addItemToLoot(loot.items, lootItemToAdd);
       await saveLoot(token.id, loot);
 
       const logEntry: LootLogEntry = {
@@ -778,6 +954,8 @@ export class TransferManager {
     LocalStorageAdapter.saveInventory(params.sourceUserId, sourceInv);
     await NetworkProtocol.syncInventory(sourceInv, params.sourceUserName);
 
+    const transferId = crypto.randomUUID();
+
     // If target is self (e.g. transfer between tabs / sub-accounts)
     if (params.targetUserId === myId) {
       this.addItemToInventory(sourceInv, deducted, params.quantity);
@@ -790,6 +968,7 @@ export class TransferManager {
         { ...deducted, quantity: params.quantity },
         myId,
         myName,
+        transferId,
       );
       if (!OBR.isAvailable) {
         const targetInv = LocalStorageAdapter.getInventory(params.targetUserId);
@@ -860,7 +1039,7 @@ export class TransferManager {
         // Original: token_bag (sourceId) -> user_inventory (targetId)
         // Reversal: user_inventory (targetId) -> token_bag (sourceId)
         const targetInv = LocalStorageAdapter.getInventory(entry.targetId);
-        const deducted = this.removeItemFromInventory(targetInv, entry.itemId, entry.quantity);
+        const deducted = this.removeLoggedItemFromInventory(targetInv, entry);
         LocalStorageAdapter.saveInventory(entry.targetId, targetInv);
         void NetworkProtocol.syncInventory(targetInv, entry.targetName);
 
@@ -881,14 +1060,7 @@ export class TransferManager {
                 quantity: entry.quantity,
               });
 
-              const existing = loot.items.find(
-                (i) => i.name === lootItemToAdd.name && i.kind === lootItemToAdd.kind,
-              );
-              if (existing) {
-                existing.quantity += entry.quantity;
-              } else {
-                loot.items.push(lootItemToAdd);
-              }
+              this.addItemToLoot(loot.items, lootItemToAdd);
               await saveLoot(token.id, loot);
             }
           }
@@ -901,15 +1073,14 @@ export class TransferManager {
           if (token) {
             const loot = getLoot(token);
             if (loot) {
-              const idx = loot.items.findIndex((i) => i.id === entry.itemId || i.name === entry.itemName);
-              if (idx !== -1) {
-                if (loot.items[idx].quantity <= entry.quantity) {
-                  loot.items.splice(idx, 1);
-                } else {
-                  loot.items[idx].quantity -= entry.quantity;
-                }
-                await saveLoot(token.id, loot);
-              }
+              this.removeItemFromLoot(
+                loot.items,
+                entry.itemId,
+                entry.itemName,
+                entry.itemSnapshot,
+                entry.quantity,
+              );
+              await saveLoot(token.id, loot);
             }
           }
         }
@@ -929,7 +1100,7 @@ export class TransferManager {
         // Original: user_inventory (sourceId) -> user_inventory (targetId)
         // Reversal: user_inventory (targetId) -> user_inventory (sourceId)
         const targetInv = LocalStorageAdapter.getInventory(entry.targetId);
-        const deducted = this.removeItemFromInventory(targetInv, entry.itemId, entry.quantity);
+        const deducted = this.removeLoggedItemFromInventory(targetInv, entry);
         LocalStorageAdapter.saveInventory(entry.targetId, targetInv);
         void NetworkProtocol.syncInventory(targetInv, entry.targetName);
 
@@ -962,7 +1133,7 @@ export class TransferManager {
         // Original: item was created in user_inventory (sourceId)
         // Reversal: remove created item from user_inventory (sourceId)
         const srcInv = LocalStorageAdapter.getInventory(entry.sourceId);
-        this.removeItemFromInventory(srcInv, entry.itemId, entry.quantity);
+        this.removeLoggedItemFromInventory(srcInv, entry);
         LocalStorageAdapter.saveInventory(entry.sourceId, srcInv);
         void NetworkProtocol.syncInventory(srcInv, entry.sourceName);
       }
@@ -1013,17 +1184,14 @@ export class TransferManager {
           if (token) {
             const loot = getLoot(token);
             if (loot) {
-              const idx = loot.items.findIndex(
-                (i) => i.id === entry.itemId || i.name === entry.itemName,
+              this.removeItemFromLoot(
+                loot.items,
+                entry.itemId,
+                entry.itemName,
+                entry.itemSnapshot,
+                entry.quantity,
               );
-              if (idx !== -1) {
-                if (loot.items[idx].quantity <= entry.quantity) {
-                  loot.items.splice(idx, 1);
-                } else {
-                  loot.items[idx].quantity -= entry.quantity;
-                }
-                await saveLoot(token.id, loot);
-              }
+              await saveLoot(token.id, loot);
             }
           }
         }
@@ -1043,7 +1211,7 @@ export class TransferManager {
         // Original: user_inventory (sourceId) -> token_bag (targetId)
         // Redo: deduct from user_inventory, add to token_bag
         const srcInv = LocalStorageAdapter.getInventory(entry.sourceId);
-        const deducted = this.removeItemFromInventory(srcInv, entry.itemId, entry.quantity);
+        const deducted = this.removeLoggedItemFromInventory(srcInv, entry);
         LocalStorageAdapter.saveInventory(entry.sourceId, srcInv);
         void NetworkProtocol.syncInventory(srcInv, entry.sourceName);
 
@@ -1064,14 +1232,7 @@ export class TransferManager {
                 quantity: entry.quantity,
               });
 
-              const existing = loot.items.find(
-                (i) => i.name === lootItemToAdd.name && i.kind === lootItemToAdd.kind,
-              );
-              if (existing) {
-                existing.quantity += entry.quantity;
-              } else {
-                loot.items.push(lootItemToAdd);
-              }
+              this.addItemToLoot(loot.items, lootItemToAdd);
               await saveLoot(token.id, loot);
             }
           }
@@ -1080,7 +1241,7 @@ export class TransferManager {
         // Original: user_inventory (sourceId) -> user_inventory (targetId)
         // Redo: deduct from sourceId, add to targetId
         const srcInv = LocalStorageAdapter.getInventory(entry.sourceId);
-        const deducted = this.removeItemFromInventory(srcInv, entry.itemId, entry.quantity);
+        const deducted = this.removeLoggedItemFromInventory(srcInv, entry);
         LocalStorageAdapter.saveInventory(entry.sourceId, srcInv);
         void NetworkProtocol.syncInventory(srcInv, entry.sourceName);
 
@@ -1099,7 +1260,7 @@ export class TransferManager {
         // Original: delete from user_inventory (sourceId)
         // Redo: remove from user_inventory (sourceId) again
         const srcInv = LocalStorageAdapter.getInventory(entry.sourceId);
-        this.removeItemFromInventory(srcInv, entry.itemId, entry.quantity);
+        this.removeLoggedItemFromInventory(srcInv, entry);
         LocalStorageAdapter.saveInventory(entry.sourceId, srcInv);
         void NetworkProtocol.syncInventory(srcInv, entry.sourceName);
       } else if (entry.action === "CREATE") {

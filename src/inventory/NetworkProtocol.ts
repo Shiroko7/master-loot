@@ -50,6 +50,7 @@ export type SocketMessage =
     }
   | {
       action: "TRANSFER_ITEM";
+      transferId: string;
       targetUserId: string;
       item: UserInventoryItem;
       fromUserId: string;
@@ -71,7 +72,9 @@ export type SocketMessage =
     };
 
 export class NetworkProtocol {
-  private static registeredListeners = new Set<(msg: SocketMessage, connectionId: string) => void>();
+  private static registeredListeners = new Set<
+    (msg: SocketMessage, connectionId: string) => void | Promise<void>
+  >();
   private static unsubscribeBroadcast: (() => void) | null = null;
 
   public static initialize(): void {
@@ -81,14 +84,16 @@ export class NetworkProtocol {
     try {
       this.unsubscribeBroadcast = OBR.broadcast.onMessage(
         INVENTORY_SOCKET_CHANNEL,
-        (event) => {
+        async (event) => {
           const raw = event.data;
           if (!raw || typeof raw !== "object" || !("action" in raw)) return;
 
           const msg = raw as SocketMessage;
-          for (const listener of this.registeredListeners) {
+          // Process listeners in registration order. TransferManager updates
+          // storage first; views then render the already-updated state.
+          for (const listener of [...this.registeredListeners]) {
             try {
-              listener(msg, event.connectionId);
+              await listener(msg, event.connectionId);
             } catch (e) {
               console.error("NetworkProtocol listener error", e);
             }
@@ -101,7 +106,7 @@ export class NetworkProtocol {
   }
 
   public static addListener(
-    listener: (msg: SocketMessage, connectionId: string) => void,
+    listener: (msg: SocketMessage, connectionId: string) => void | Promise<void>,
   ): () => void {
     this.initialize();
     this.registeredListeners.add(listener);
@@ -136,7 +141,7 @@ export class NetworkProtocol {
     state: UserInventoryState,
     senderName: string,
   ): Promise<void> {
-    await this.broadcastRemote({
+    await this.broadcast({
       action: "SYNC_INVENTORY",
       state,
       senderId: state.userId,
@@ -148,7 +153,7 @@ export class NetworkProtocol {
     targetUserId: string,
     requesterId: string,
   ): Promise<void> {
-    await this.broadcastRemote({
+    await this.broadcast({
       action: "REQUEST_INVENTORY",
       targetUserId,
       requesterId,
@@ -160,7 +165,7 @@ export class NetworkProtocol {
     state: UserInventoryState,
     gmId: string,
   ): Promise<void> {
-    await this.broadcastRemote({
+    await this.broadcast({
       action: "GM_MODIFY_INVENTORY",
       targetUserId,
       state,
@@ -173,9 +178,11 @@ export class NetworkProtocol {
     item: UserInventoryItem,
     fromUserId: string,
     fromUserName: string,
+    transferId: string,
   ): Promise<void> {
-    await this.broadcastRemote({
+    await this.broadcast({
       action: "TRANSFER_ITEM",
+      transferId,
       targetUserId,
       item,
       fromUserId,
