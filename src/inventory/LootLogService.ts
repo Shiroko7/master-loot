@@ -1,7 +1,20 @@
 import OBR from "@owlbear-rodeo/sdk";
-import { LOOT_LOG_KEY } from "../constants";
+import { LOOT_LOG_KEY, MAX_LOOT_LOG_METADATA_BYTES } from "../constants";
 import type { LootLogEntry } from "../modules/inventory/UserInventoryModel";
 import { NetworkProtocol } from "./NetworkProtocol";
+
+/** Newest-first entries, keeping as many as fit under maxBytes (always keeps at least the newest one). */
+function trimToByteBudget(entries: LootLogEntry[], maxBytes: number): LootLogEntry[] {
+  const kept: LootLogEntry[] = [];
+  let size = 2; // "[" + "]"
+  for (const entry of entries) {
+    const entrySize = new TextEncoder().encode(JSON.stringify(entry)).length + 1; // +1 for separator
+    if (kept.length > 0 && size + entrySize > maxBytes) break;
+    size += entrySize;
+    kept.push(entry);
+  }
+  return kept;
+}
 
 export class LootLogService {
   private static localLogs: LootLogEntry[] = [];
@@ -18,6 +31,17 @@ export class LootLogService {
     });
   }
 
+  private static notifySubscribers(): void {
+    const snapshot = [...this.localLogs];
+    for (const subscriber of this.subscribers) {
+      try {
+        subscriber(snapshot);
+      } catch (e) {
+        console.error("LootLogService subscriber error", e);
+      }
+    }
+  }
+
   private static replaceCachedLogs(logs: LootLogEntry[]): void {
     const seen = new Set<string>();
     this.localLogs = logs
@@ -27,15 +51,28 @@ export class LootLogService {
         return true;
       })
       .slice(0, 500);
+    this.notifySubscribers();
+  }
 
-    const snapshot = [...this.localLogs];
-    for (const subscriber of this.subscribers) {
-      try {
-        subscriber(snapshot);
-      } catch (e) {
-        console.error("LootLogService subscriber error", e);
-      }
+  /**
+   * Merges entries sourced from room metadata into the local cache instead
+   * of replacing it. Room metadata only ever holds a byte-budget-trimmed
+   * window (see MAX_LOOT_LOG_METADATA_BYTES) — merging preserves any richer
+   * history this session already has from broadcasts/appends rather than
+   * truncating it down to that window.
+   */
+  private static mergeCachedLogs(remoteLogs: LootLogEntry[]): void {
+    const byId = new Map<string, LootLogEntry>();
+    for (const entry of this.localLogs) {
+      if (entry && typeof entry.id === "string") byId.set(entry.id, entry);
     }
+    for (const entry of remoteLogs) {
+      if (entry && typeof entry.id === "string" && !byId.has(entry.id)) byId.set(entry.id, entry);
+    }
+    this.localLogs = Array.from(byId.values())
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 500);
+    this.notifySubscribers();
   }
 
   private static queueAppend(task: () => Promise<void>): Promise<void> {
@@ -56,7 +93,7 @@ export class LootLogService {
       const meta = await OBR.room.getMetadata();
       const raw = meta[LOOT_LOG_KEY];
       if (Array.isArray(raw)) {
-        this.replaceCachedLogs(raw as LootLogEntry[]);
+        this.mergeCachedLogs(raw as LootLogEntry[]);
         return [...this.localLogs];
       }
     } catch (e) {
@@ -97,9 +134,11 @@ export class LootLogService {
         const current = await this.getLogs();
         if (current.some((existing) => existing.id === entry.id)) return;
 
-        // Keep most recent 500 entries to prevent metadata bloating.
+        // Keep most recent 500 entries locally/in the broadcast; only a
+        // byte-budget-trimmed window is persisted to room metadata.
         const updated = [entry, ...current].slice(0, 500);
-        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: updated });
+        const persisted = trimToByteBudget(updated, MAX_LOOT_LOG_METADATA_BYTES);
+        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: persisted });
         this.replaceCachedLogs(updated);
         await NetworkProtocol.syncLootLog(updated);
       } catch (e) {
@@ -130,7 +169,8 @@ export class LootLogService {
       if (entry) {
         entry.undone = true;
         entry.undoneAt = Date.now();
-        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: current });
+        const persisted = trimToByteBudget(current, MAX_LOOT_LOG_METADATA_BYTES);
+        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: persisted });
         this.replaceCachedLogs(current);
         await NetworkProtocol.syncLootLog(current);
       }
@@ -161,7 +201,8 @@ export class LootLogService {
       if (entry) {
         entry.undone = false;
         entry.redoneAt = Date.now();
-        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: current });
+        const persisted = trimToByteBudget(current, MAX_LOOT_LOG_METADATA_BYTES);
+        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: persisted });
         this.replaceCachedLogs(current);
         await NetworkProtocol.syncLootLog(current);
       }
@@ -203,7 +244,7 @@ export class LootLogService {
     const unsubscribeMetadata = OBR.room.onMetadataChange((meta) => {
       const raw = meta[LOOT_LOG_KEY];
       const logs = Array.isArray(raw) ? (raw as LootLogEntry[]) : [];
-      this.replaceCachedLogs(logs);
+      this.mergeCachedLogs(logs);
     });
 
     return () => {
