@@ -1,5 +1,5 @@
 import OBR from "@owlbear-rodeo/sdk";
-import { CTX_EDIT_ID, CTX_OPEN_ID, LOOT_KEY } from "./constants";
+import { CTX_EDIT_ID } from "./constants";
 import {
   badgePosition,
   getBadgeCorner,
@@ -32,29 +32,6 @@ async function setupContextMenus(): Promise<void> {
     onClick(context) {
       const token = context.items[0];
       if (token) void openEditorModal(token.id);
-    },
-  });
-
-  // Players: only tokens the GM marked lootable.
-  await OBR.contextMenu.create({
-    id: CTX_OPEN_ID,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Open Loot",
-        filter: {
-          max: 1,
-          roles: ["PLAYER"],
-          every: [
-            { key: "type", value: "IMAGE" },
-            { key: ["metadata", LOOT_KEY, "enabled"], value: true },
-          ],
-        },
-      },
-    ],
-    onClick(context, elementId) {
-      const token = context.items[0];
-      if (token) void openLootPopover(token.id, { elementId });
     },
   });
 }

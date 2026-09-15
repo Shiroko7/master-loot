@@ -40,7 +40,7 @@ a handout.
   **badge image** (any URL or a file you drop in `public/`, e.g.
   `/my-badge.png`; square images look best, empty restores the built-in
   sack). Changing either updates every badge already in the scene.
-- **Players**: click the badge (or right-click → **Open Loot**) to open a loot popup.
+- **Players**: click the badge to open a loot popup.
   Clicking a written item opens it as a full document — letter, scroll, book or
   journal — each with its own paper texture and typography, plus an optional
   paper condition (fancy, crumpled, water-damaged, bloodstained, burnt, …).
