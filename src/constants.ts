@@ -30,6 +30,15 @@ export const INVENTORY_SOCKET_CHANNEL = "module.master-loot";
 /** Room metadata key for GM-persisted audit loot log */
 export const LOOT_LOG_KEY = `${EXT_ID}/lootLog`;
 
+/**
+ * Room metadata is a single ~16kB budget shared across every extension
+ * installed in the room. Keep the *persisted* loot log well under that —
+ * full session history still flows to connected clients over the realtime
+ * broadcast channel (unbounded by this), this only caps what's written to
+ * room metadata for a reconnecting/late-joining client to catch up on.
+ */
+export const MAX_LOOT_LOG_METADATA_BYTES = 4_096;
+
 /** Modal window IDs */
 export const INVENTORY_MODAL_ID = `${EXT_ID}/inventory-modal`;
 export const LOOT_LOG_MODAL_ID = `${EXT_ID}/loot-log-modal`;
