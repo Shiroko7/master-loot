@@ -1,6 +1,6 @@
 {
   "name": "Master Loot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "manifest_version": 1,
   "author": "shiro",
   "description": "Immersive WoW-style loot: mark any token lootable and let players discover letters, books and journals.",

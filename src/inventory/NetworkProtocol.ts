@@ -61,6 +61,10 @@ export type SocketMessage =
       entry: LootLogEntry;
     }
   | {
+      action: "SYNC_LOOT_LOG";
+      logs: LootLogEntry[];
+    }
+  | {
       action: "UNDO_LOG_ENTRY";
       logId: string;
       requesterId: string;
@@ -194,6 +198,13 @@ export class NetworkProtocol {
     await this.broadcast({
       action: "APPEND_LOG",
       entry,
+    });
+  }
+
+  public static async syncLootLog(logs: LootLogEntry[]): Promise<void> {
+    await this.broadcast({
+      action: "SYNC_LOOT_LOG",
+      logs,
     });
   }
 

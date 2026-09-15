@@ -5,24 +5,64 @@ import { NetworkProtocol } from "./NetworkProtocol";
 
 export class LootLogService {
   private static localLogs: LootLogEntry[] = [];
+  private static readonly subscribers = new Set<(logs: LootLogEntry[]) => void>();
+  private static networkUnsubscribe: (() => void) | null = null;
+  private static appendQueue: Promise<void> = Promise.resolve();
+
+  private static ensureNetworkListener(): void {
+    if (!OBR.isAvailable || this.networkUnsubscribe) return;
+
+    this.networkUnsubscribe = NetworkProtocol.addListener(async (message) => {
+      if (message.action !== "SYNC_LOOT_LOG") return;
+      this.replaceCachedLogs(message.logs);
+    });
+  }
+
+  private static replaceCachedLogs(logs: LootLogEntry[]): void {
+    const seen = new Set<string>();
+    this.localLogs = logs
+      .filter((entry) => {
+        if (!entry || typeof entry.id !== "string" || seen.has(entry.id)) return false;
+        seen.add(entry.id);
+        return true;
+      })
+      .slice(0, 500);
+
+    const snapshot = [...this.localLogs];
+    for (const subscriber of this.subscribers) {
+      try {
+        subscriber(snapshot);
+      } catch (e) {
+        console.error("LootLogService subscriber error", e);
+      }
+    }
+  }
+
+  private static queueAppend(task: () => Promise<void>): Promise<void> {
+    const next = this.appendQueue.then(task, task);
+    this.appendQueue = next.catch(() => undefined);
+    return next;
+  }
 
   /**
    * Retrieves all log entries stored in room metadata.
    */
   public static async getLogs(): Promise<LootLogEntry[]> {
     if (!OBR.isAvailable) {
-      return this.localLogs;
+      return [...this.localLogs];
     }
+    this.ensureNetworkListener();
     try {
       const meta = await OBR.room.getMetadata();
       const raw = meta[LOOT_LOG_KEY];
       if (Array.isArray(raw)) {
-        return raw as LootLogEntry[];
+        this.replaceCachedLogs(raw as LootLogEntry[]);
+        return [...this.localLogs];
       }
     } catch (e) {
       console.warn("LootLogService: Failed to get logs from room metadata", e);
     }
-    return [];
+    return [...this.localLogs];
   }
 
   /**
@@ -31,9 +71,13 @@ export class LootLogService {
    */
   public static async appendLog(entry: LootLogEntry): Promise<void> {
     if (!OBR.isAvailable) {
-      this.localLogs = [entry, ...this.localLogs].slice(0, 500);
+      if (!this.localLogs.some((existing) => existing.id === entry.id)) {
+        this.replaceCachedLogs([entry, ...this.localLogs]);
+      }
       return;
     }
+
+    this.ensureNetworkListener();
 
     let role = "PLAYER";
     try {
@@ -48,14 +92,20 @@ export class LootLogService {
       return;
     }
 
-    try {
-      const current = await this.getLogs();
-      // Keep most recent 500 entries to prevent metadata bloating
-      const updated = [entry, ...current].slice(0, 500);
-      await OBR.room.setMetadata({ [LOOT_LOG_KEY]: updated });
-    } catch (e) {
-      console.error("LootLogService: Failed to append log entry", e);
-    }
+    await this.queueAppend(async () => {
+      try {
+        const current = await this.getLogs();
+        if (current.some((existing) => existing.id === entry.id)) return;
+
+        // Keep most recent 500 entries to prevent metadata bloating.
+        const updated = [entry, ...current].slice(0, 500);
+        await OBR.room.setMetadata({ [LOOT_LOG_KEY]: updated });
+        this.replaceCachedLogs(updated);
+        await NetworkProtocol.syncLootLog(updated);
+      } catch (e) {
+        console.error("LootLogService: Failed to append log entry", e);
+      }
+    });
   }
 
   /**
@@ -67,9 +117,12 @@ export class LootLogService {
       if (entry) {
         entry.undone = true;
         entry.undoneAt = Date.now();
+        this.replaceCachedLogs(this.localLogs);
       }
       return;
     }
+
+    this.ensureNetworkListener();
 
     try {
       const current = await this.getLogs();
@@ -78,6 +131,8 @@ export class LootLogService {
         entry.undone = true;
         entry.undoneAt = Date.now();
         await OBR.room.setMetadata({ [LOOT_LOG_KEY]: current });
+        this.replaceCachedLogs(current);
+        await NetworkProtocol.syncLootLog(current);
       }
     } catch (e) {
       console.error("LootLogService: Failed to mark entry as undone", e);
@@ -93,9 +148,12 @@ export class LootLogService {
       if (entry) {
         entry.undone = false;
         entry.redoneAt = Date.now();
+        this.replaceCachedLogs(this.localLogs);
       }
       return;
     }
+
+    this.ensureNetworkListener();
 
     try {
       const current = await this.getLogs();
@@ -104,6 +162,8 @@ export class LootLogService {
         entry.undone = false;
         entry.redoneAt = Date.now();
         await OBR.room.setMetadata({ [LOOT_LOG_KEY]: current });
+        this.replaceCachedLogs(current);
+        await NetworkProtocol.syncLootLog(current);
       }
     } catch (e) {
       console.error("LootLogService: Failed to mark entry as redone", e);
@@ -115,7 +175,7 @@ export class LootLogService {
    */
   public static async clearLogs(): Promise<void> {
     if (!OBR.isAvailable) {
-      this.localLogs = [];
+      this.replaceCachedLogs([]);
       return;
     }
 
@@ -124,7 +184,10 @@ export class LootLogService {
       throw new Error("Only the GM can clear the loot audit log.");
     }
 
+    this.ensureNetworkListener();
     await OBR.room.setMetadata({ [LOOT_LOG_KEY]: [] });
+    this.replaceCachedLogs([]);
+    await NetworkProtocol.syncLootLog([]);
   }
 
   /**
@@ -134,10 +197,18 @@ export class LootLogService {
     if (!OBR.isAvailable) {
       return () => {};
     }
-    return OBR.room.onMetadataChange((meta) => {
+    this.ensureNetworkListener();
+    this.subscribers.add(callback);
+
+    const unsubscribeMetadata = OBR.room.onMetadataChange((meta) => {
       const raw = meta[LOOT_LOG_KEY];
       const logs = Array.isArray(raw) ? (raw as LootLogEntry[]) : [];
-      callback(logs);
+      this.replaceCachedLogs(logs);
     });
+
+    return () => {
+      this.subscribers.delete(callback);
+      unsubscribeMetadata();
+    };
   }
 }

@@ -205,6 +205,33 @@ test("LocalStorageAdapter: claims cross-window operations only once", () => {
   assert.equal(LocalStorageAdapter.claimOperation(operationId), false);
 });
 
+test("LootLogService: ignores duplicate communal activity entries", async () => {
+  await LootLogService.clearLogs();
+  const entry = {
+    id: "communal-log-1",
+    timestamp: Date.now(),
+    userId: "player-a",
+    userName: "Player A",
+    action: "TRANSFER",
+    itemId: "item-1",
+    itemName: "Shared Relic",
+    quantity: 1,
+    sourceType: "user_inventory",
+    sourceId: "player-a",
+    sourceName: "Player A",
+    targetType: "user_inventory",
+    targetId: "player-b",
+    targetName: "Player B",
+  } as any;
+
+  await LootLogService.appendLog(entry);
+  await LootLogService.appendLog(entry);
+
+  const logs = await LootLogService.getLogs();
+  assert.equal(logs.filter((log) => log.id === entry.id).length, 1);
+  await LootLogService.clearLogs();
+});
+
 test("ExportManager: computes hash and parses valid JSON backup", async () => {
   const state = createDefaultInventory("user-exp");
   state.items.push({
