@@ -1,99 +1,16 @@
 import OBR from "@owlbear-rodeo/sdk";
-import { CTX_EDIT_ID, CTX_OPEN_ID, EXT_ID, LOOT_KEY } from "./constants";
 import {
   badgePosition,
   getBadgeCorner,
   getLoot,
   isBadge,
   isSparkle,
-  openEditorModal,
-  openInventoryModal,
-  openLootLogModal,
   openLootPopover,
   syncBadge,
 } from "./loot";
 import { TransferManager } from "./inventory/TransferManager";
 import { NetworkProtocol } from "./inventory/NetworkProtocol";
 import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
-
-async function setupContextMenus(): Promise<void> {
-  // GM: any single image can be given loot — bodies, chests, doors, trees.
-  await OBR.contextMenu.create({
-    id: CTX_EDIT_ID,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Loot",
-        filter: {
-          max: 1,
-          roles: ["GM"],
-          every: [{ key: "type", value: "IMAGE" }],
-        },
-      },
-    ],
-    onClick(context) {
-      const token = context.items[0];
-      if (token) void openEditorModal(token.id);
-    },
-  });
-
-  // Players: only tokens the GM marked lootable.
-  await OBR.contextMenu.create({
-    id: CTX_OPEN_ID,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Open Loot",
-        filter: {
-          max: 1,
-          roles: ["PLAYER"],
-          every: [
-            { key: "type", value: "IMAGE" },
-            { key: ["metadata", LOOT_KEY, "enabled"], value: true },
-          ],
-        },
-      },
-    ],
-    onClick(context, elementId) {
-      const token = context.items[0];
-      if (token) void openLootPopover(token.id, { elementId });
-    },
-  });
-
-  // Open personal inventory for all users
-  await OBR.contextMenu.create({
-    id: `${EXT_ID}/context-inventory`,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Personal Inventory",
-        filter: {
-          every: [{ key: "type", value: "IMAGE" }],
-        },
-      },
-    ],
-    onClick() {
-      void openInventoryModal();
-    },
-  });
-
-  // Open loot activity log for all users
-  await OBR.contextMenu.create({
-    id: `${EXT_ID}/context-loot-log`,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Loot Activity Log",
-        filter: {
-          every: [{ key: "type", value: "IMAGE" }],
-        },
-      },
-    ],
-    onClick() {
-      void openLootLogModal();
-    },
-  });
-}
 
 /**
  * Single-click looting: when a player selects a loot badge, immediately
@@ -243,7 +160,6 @@ OBR.onReady(async () => {
     console.warn("Master Loot: background inventory initial sync failed", err);
   }
 
-  void setupContextMenus();
   watchBadgeClicks();
   watchSceneForCleanup();
 });
