@@ -1,40 +1,16 @@
 import OBR from "@owlbear-rodeo/sdk";
-import { CTX_EDIT_ID } from "./constants";
 import {
   badgePosition,
   getBadgeCorner,
   getLoot,
   isBadge,
   isSparkle,
-  openEditorModal,
   openLootPopover,
   syncBadge,
 } from "./loot";
 import { TransferManager } from "./inventory/TransferManager";
 import { NetworkProtocol } from "./inventory/NetworkProtocol";
 import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
-
-async function setupContextMenus(): Promise<void> {
-  // GM: any single image can be given loot — bodies, chests, doors, trees.
-  await OBR.contextMenu.create({
-    id: CTX_EDIT_ID,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Loot",
-        filter: {
-          max: 1,
-          roles: ["GM"],
-          every: [{ key: "type", value: "IMAGE" }],
-        },
-      },
-    ],
-    onClick(context) {
-      const token = context.items[0];
-      if (token) void openEditorModal(token.id);
-    },
-  });
-}
 
 /**
  * Single-click looting: when a player selects a loot badge, immediately
@@ -184,7 +160,6 @@ OBR.onReady(async () => {
     console.warn("Master Loot: background inventory initial sync failed", err);
   }
 
-  void setupContextMenus();
   watchBadgeClicks();
   watchSceneForCleanup();
 });
