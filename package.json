@@ -1,6 +1,6 @@
 {
   "name": "master-loot",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Owlbear Rodeo extension for immersive, WoW-style loot with beautifully rendered letters, books and journals.",
   "type": "module",
   "scripts": {

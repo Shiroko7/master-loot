@@ -1,5 +1,5 @@
 import OBR from "@owlbear-rodeo/sdk";
-import { CTX_EDIT_ID, CTX_OPEN_ID, EXT_ID, LOOT_KEY } from "./constants";
+import { CTX_EDIT_ID, CTX_OPEN_ID, LOOT_KEY } from "./constants";
 import {
   badgePosition,
   getBadgeCorner,
@@ -7,8 +7,6 @@ import {
   isBadge,
   isSparkle,
   openEditorModal,
-  openInventoryModal,
-  openLootLogModal,
   openLootPopover,
   syncBadge,
 } from "./loot";
@@ -57,40 +55,6 @@ async function setupContextMenus(): Promise<void> {
     onClick(context, elementId) {
       const token = context.items[0];
       if (token) void openLootPopover(token.id, { elementId });
-    },
-  });
-
-  // Open personal inventory for all users
-  await OBR.contextMenu.create({
-    id: `${EXT_ID}/context-inventory`,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Personal Inventory",
-        filter: {
-          every: [{ key: "type", value: "IMAGE" }],
-        },
-      },
-    ],
-    onClick() {
-      void openInventoryModal();
-    },
-  });
-
-  // Open loot activity log for all users
-  await OBR.contextMenu.create({
-    id: `${EXT_ID}/context-loot-log`,
-    icons: [
-      {
-        icon: "/icon.svg",
-        label: "Loot Activity Log",
-        filter: {
-          every: [{ key: "type", value: "IMAGE" }],
-        },
-      },
-    ],
-    onClick() {
-      void openLootLogModal();
     },
   });
 }
