@@ -4,6 +4,8 @@ import {
   defaultLayout,
   type LootDocument,
 } from "./types";
+import { renderNewspaperDocument } from "./newspaperRender";
+import { renderMarkdownInto } from "./markdown";
 
 /**
  * A line of 3+ dashes (`---`) forces a page/section break. Content often
@@ -11,9 +13,6 @@ import {
  * and asterisks, optionally spaced (`— — —`, `***`), and NBSP "blanks".
  */
 const BREAK_LINE = /^[^\S\n]*(?:[-–—―_*][^\S\n]*){3,}$/m;
-
-/** A paragraph wrapped in *asterisks* is an editorial note, not written ink. */
-const NOTE_BLOCK = /^\*([^*][\s\S]*)\*$/;
 
 /*
  * Page geometry, in the paper's own em units. Must stay in sync with
@@ -52,6 +51,10 @@ export function renderDocument(
   root: HTMLElement,
   doc: LootDocument,
 ): RenderedDocument {
+  if (doc.style === "newspaper") {
+    return renderNewspaperDocument(root, doc);
+  }
+
   root.innerHTML = "";
 
   const paper = document.createElement("article");
@@ -98,17 +101,9 @@ export function renderDocument(
       divider.className = paged ? "page-break" : "text-divider";
       body.append(divider);
     }
-    for (const block of segment.split(/\n{2,}/)) {
-      const p = document.createElement("p");
-      const note = NOTE_BLOCK.exec(block.trim());
-      if (note) p.className = "paper-note";
-      const text = note ? note[1].trim() : block;
-      text.split("\n").forEach((line, i) => {
-        if (i > 0) p.append(document.createElement("br"));
-        p.append(line);
-      });
-      body.append(p);
-    }
+    renderMarkdownInto(body, segment, {
+      dropCapFirstParagraph: doc.style === "book" && index === 0,
+    });
   });
 
   let handle = FLOW_HANDLE;

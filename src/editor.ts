@@ -19,8 +19,12 @@ import { fetchLootItem, parseItemLink, safeHttpUrl } from "./fiveETools";
 import { getLoot, getToken, saveLoot } from "./loot";
 import { renderIdCard } from "./idCard";
 import { renderDocument } from "./paperRender";
+import { createNewspaperLayoutPicker } from "./newspaperLayoutPicker";
+import { createNewspaperHeaderFields } from "./newspaperHeaderFields";
+import { createNewspaperImageManager } from "./newspaperImageManager";
 import { getBackup } from "./storage";
 import { buildCoinConverter } from "./coins";
+import { renderMarkdownInto, isImgurAlbumUrl } from "./markdown";
 import {
   COIN_KINDS,
   COIN_META,
@@ -31,6 +35,10 @@ import {
   DOC_STYLES,
   DOC_STYLE_META,
   ID_ROW_FIELDS,
+  NEWSPAPER_PRINT_FILTERS,
+  NEWSPAPER_PRINT_FILTER_META,
+  NEWSPAPER_HEADER_STYLES,
+  NEWSPAPER_HEADER_META,
   PAPER_TEXTURES,
   PAPER_TEXTURE_META,
   defaultLayout,
@@ -47,6 +55,8 @@ import {
   type LootContainer,
   type LootDocument,
   type LootItem,
+  type NewspaperPrintFilter,
+  type NewspaperHeaderStyle,
 } from "./types";
 
 const app = document.getElementById("app")!;
@@ -195,6 +205,9 @@ function buildShell(): void {
   const addDoc = el("button", "btn btn-gold");
   addDoc.textContent = "+ Document";
   addDoc.onclick = () => addLootItem(createLootDocument());
+  const addNews = el("button", "btn btn-gold");
+  addNews.textContent = "+ Newspaper";
+  addNews.onclick = () => addLootItem(createLootDocument("newspaper"));
   const addCoins = el("button", "btn");
   addCoins.textContent = "+ Coins";
   addCoins.onclick = () => addLootItem(createCurrencyItem());
@@ -204,7 +217,7 @@ function buildShell(): void {
   const addFolderBtn = el("button", "btn");
   addFolderBtn.textContent = "+ Folder";
   addFolderBtn.onclick = () => addFolder();
-  addRow.append(addItem, addDoc, addCoins, addIdCard, addFolderBtn);
+  addRow.append(addItem, addDoc, addNews, addCoins, addIdCard, addFolderBtn);
   listPane.append(addRow, buildImportRow(), listEl);
 
   detailEl = el("div", "editor-detail");
@@ -289,7 +302,7 @@ function renderImportPreview(item: LootItem): void {
 
   if (item.description) {
     const desc = el("div", "import-desc");
-    desc.textContent = item.description;
+    renderMarkdownInto(desc, item.description);
     card.append(desc);
   }
 
@@ -657,14 +670,38 @@ function renderItemDetail(item: LootItem): void {
   };
   detailEl.append(field("Name", nameInput), commonFields(item));
 
+  const descWrap = el("div");
   const descInput = el("textarea");
   descInput.value = item.description ?? "";
-  descInput.placeholder = "Shown to players when they click the item.";
+  descInput.placeholder =
+    "Shown to players when they click the item. Full Markdown supported (**bold**, *italic*, - lists, | tables, > quotes).";
+
+  const descPreview = el("div", "slot-desc");
+  descPreview.style.marginTop = "6px";
+  descPreview.style.padding = "6px 8px";
+  descPreview.style.background = "rgba(0, 0, 0, 0.25)";
+  descPreview.style.border = "1px solid var(--border-soft)";
+  descPreview.style.borderRadius = "4px";
+
+  const updateDescPreview = () => {
+    descPreview.innerHTML = "";
+    if (item.description?.trim()) {
+      renderMarkdownInto(descPreview, item.description);
+      descPreview.style.display = "block";
+    } else {
+      descPreview.style.display = "none";
+    }
+  };
+
   descInput.oninput = () => {
     item.description = descInput.value;
+    updateDescPreview();
     markDirty();
   };
-  detailEl.append(field("Description", descInput));
+  updateDescPreview();
+
+  descWrap.append(descInput, descPreview);
+  detailEl.append(field("Description (Markdown supported)", descWrap));
 
   const linkInput = el("input");
   linkInput.value = item.link ?? "";
@@ -818,13 +855,27 @@ function renderIdCardDetail(item: LootItem): void {
   detailEl.append(identityRow);
 
   const portraitUrlRow = el("div", "field-row");
+  const portraitUrlInput = profileInput("portraitUrl", "Paste direct image URL (https://…)");
   portraitUrlRow.append(
-    field(
-      "Portrait image URL (replaces the emoji)",
-      profileInput("portraitUrl", "https://… — leave empty to use the emoji"),
-    ),
+    field("Portrait image URL (replaces the emoji)", portraitUrlInput),
   );
   detailEl.append(portraitUrlRow);
+
+  const albumWarning = el("div");
+  albumWarning.style.color = "var(--gold-bright, #f59e0b)";
+  albumWarning.style.fontSize = "0.78em";
+  albumWarning.style.marginTop = "2px";
+  albumWarning.style.marginBottom = "6px";
+  albumWarning.style.display = "none";
+  albumWarning.innerHTML =
+    "⚠️ <strong>Imgur Album link detected:</strong> Imgur doesn't allow embedding album pages directly. Open the link on Imgur, right-click the picture itself, and click <em>Copy Image Address</em> (direct link looks like <code>https://i.imgur.com/...jpeg</code>).";
+
+  const checkPortraitWarning = () => {
+    albumWarning.style.display = isImgurAlbumUrl(portraitUrlInput.value) ? "block" : "none";
+  };
+  portraitUrlInput.addEventListener("input", checkPortraitWarning);
+  checkPortraitWarning();
+  detailEl.append(albumWarning);
 
   // Two label/value fields per row keeps the pane compact.
   for (let i = 0; i < ID_ROW_FIELDS.length; i += 2) {
@@ -851,6 +902,175 @@ function renderIdCardDetail(item: LootItem): void {
 
   refreshPreview();
   detailEl.append(wrap);
+}
+
+
+function buildDocumentSyntaxGuide(
+  contentInput: HTMLTextAreaElement,
+  isNewspaper: boolean,
+): HTMLElement {
+  const details = el("details", "doc-syntax-guide");
+  if (isNewspaper) {
+    details.setAttribute("open", "");
+  }
+
+  const summary = el("summary", "doc-syntax-summary");
+  const titleSpan = el("span", "doc-syntax-title");
+  titleSpan.innerHTML = `<span>📝</span> <span>${
+    isNewspaper ? "Newspaper Tropes & Markdown Guide" : "Formatting & Markdown Guide"
+  }</span>`;
+  const badge = el("span", "doc-syntax-badge");
+  badge.textContent = isNewspaper ? "Newspaper Tropes Active" : "Markdown Enabled";
+  summary.append(titleSpan, badge);
+  details.append(summary);
+
+  const body = el("div", "doc-syntax-body");
+
+  // Quick-insert toolbar
+  const toolbar = el("div", "doc-syntax-toolbar");
+  const toolbarLabel = el("span", "doc-syntax-toolbar-label");
+  toolbarLabel.textContent = "Quick Insert:";
+  toolbar.append(toolbarLabel);
+
+  const insertSnippet = (prefix: string, suffix = "", defaultText = "") => {
+    const start = contentInput.selectionStart ?? contentInput.value.length;
+    const end = contentInput.selectionEnd ?? contentInput.value.length;
+    const current = contentInput.value;
+    const selected = current.substring(start, end);
+    const middle = selected || defaultText;
+    const replacement = `${prefix}${middle}${suffix}`;
+    contentInput.value = current.substring(0, start) + replacement + current.substring(end);
+    contentInput.focus();
+    contentInput.selectionStart = start + prefix.length;
+    contentInput.selectionEnd = start + prefix.length + middle.length;
+    contentInput.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  const createChip = (label: string, title: string, onClick: () => void) => {
+    const chip = el("button", "doc-syntax-chip");
+    chip.type = "button";
+    chip.textContent = label;
+    chip.title = title;
+    chip.onclick = (e) => {
+      e.preventDefault();
+      onClick();
+    };
+    return chip;
+  };
+
+  if (isNewspaper) {
+    toolbar.append(
+      createChip('> Quote', 'Insert In-Column Pull-Quote', () =>
+        insertSnippet('\n> "', '" — Speaker Name\n', 'Important quote from an official or witness')
+      ),
+      createChip('>> Banner', 'Insert Breakout Banner Pull-Quote across columns', () =>
+        insertSnippet('\n>> "', '" — Speaker Name\n', 'BREAKOUT HEADLINE QUOTE')
+      ),
+      createChip('! Alert', 'Insert Highlight Callout Bar', () =>
+        insertSnippet('\n! ALERT: ', '\n', 'Crucial bulletin or breaking warning for citizens')
+      ),
+      createChip('### Subhead', 'Insert Section Crosshead Divider', () =>
+        insertSnippet('\n### ', '\n', 'SECTION SUBHEADING')
+      ),
+      createChip('City —', 'Insert City Dateline Lead', () =>
+        insertSnippet('WATERDEEP, Ches 14 — ', '', 'Early this morning...')
+      ),
+      createChip('==Mark==', 'Highlight text with printed ink', () =>
+        insertSnippet('==', '==', 'highlighted text')
+      ),
+      createChip('**Bold**', 'Bold text', () =>
+        insertSnippet('**', '**', 'bold text')
+      ),
+      createChip('*Italic*', 'Italic text', () =>
+        insertSnippet('*', '*', 'italic text')
+      ),
+      createChip('--- Page', 'Start a new newspaper page with new layout', () =>
+        insertSnippet('\n\n---\n\n', '', '# NEXT STORY HEADLINE')
+      ),
+    );
+  } else {
+    toolbar.append(
+      createChip('**Bold**', 'Bold text', () =>
+        insertSnippet('**', '**', 'bold text')
+      ),
+      createChip('*Italic*', 'Italic text', () =>
+        insertSnippet('*', '*', 'italic text')
+      ),
+      createChip('~~Strike~~', 'Strikethrough', () =>
+        insertSnippet('~~', '~~', 'strikethrough')
+      ),
+      createChip('==Mark==', 'Highlight text', () =>
+        insertSnippet('==', '==', 'highlighted text')
+      ),
+      createChip('# Heading', 'Heading 1', () =>
+        insertSnippet('\n# ', '\n', 'Heading')
+      ),
+      createChip('## Subhead', 'Heading 2', () =>
+        insertSnippet('\n## ', '\n', 'Subheading')
+      ),
+      createChip('> Quote', 'Blockquote', () =>
+        insertSnippet('\n> ', '\n', 'Quote text')
+      ),
+      createChip('- List', 'Bullet list item', () =>
+        insertSnippet('\n- ', '\n', 'List item')
+      ),
+      createChip('--- Page', 'Start a new page', () =>
+        insertSnippet('\n\n---\n\n', '', '')
+      ),
+      createChip('🎲 Dice', 'Interactive rollable dice tag', () =>
+        insertSnippet('{@dice ', '}', '1d20+5')
+      ),
+    );
+  }
+
+  body.append(toolbar);
+
+  // Cheat sheet table
+  const table = el("div", "doc-syntax-grid");
+  const addRow = (syntax: string, meaning: string, example: string) => {
+    const row = el("div", "doc-syntax-row");
+    const synEl = el("code", "doc-syntax-code");
+    synEl.textContent = syntax;
+    const descEl = el("span", "doc-syntax-desc");
+    descEl.textContent = meaning;
+    const exEl = el("span", "doc-syntax-example");
+    exEl.textContent = example;
+    row.append(synEl, descEl, exEl);
+    table.append(row);
+  };
+
+  if (isNewspaper) {
+    addRow('# Headline', 'Front-page main article headline', '# MIDNIGHT HEIST');
+    addRow('## Subhead', 'Italic story dek / subtitle', '## Watch suspects guild');
+    addRow('CITY, Date —', 'Opening story dateline (bold small-caps)', 'WATERDEEP, Ches 14 — ...');
+    addRow('> "Quote" — Author', 'In-column pull-quote (enlarged, double-ruled)', '> "The wards held." — Vajra');
+    addRow('>> "Banner" — Author', 'Breakout pull-quote across both columns', '>> "A SHADOW HAS FALLEN"');
+    addRow('! ALERT: Callout', 'Highlighted callout bar with ink border & badge', '! ALERT: Gates closed');
+    addRow('### Crosshead', 'Centered in-column section divider', '### NEW WITNESSES');
+    addRow('==text==', 'Printed yellow ink marker highlighting', '==ancient sorcery==');
+    addRow('*Note / Bulletin*', 'Framed public notice / reward inquiry box', '*Report to the Watch.*');
+    addRow('---', 'Manual page break (long articles also auto-paginate)', '---');
+    addRow('![Caption|filter](url)', 'Illustration with halftone / engraving / sepia', '![Dragon|engraving](https://...)');
+    addRow('![Caption|page](url)', 'Picture spanning one page, at this point in the story', '![City panorama|page|engraving](https://...)');
+    addRow('![Caption|column](url)', 'Picture kept inside its reading column', '![Witness|column](https://...)');
+  } else {
+    addRow('# Heading', 'Large document header', '# Chapter I');
+    addRow('## Subheading', 'Section header', '## The Journey');
+    addRow('**text**', 'Bold text', '**secret message**');
+    addRow('*text*', 'Italic / cursive text', '*whispered words*');
+    addRow('~~text~~', 'Strikethrough text', '~~crossed out~~');
+    addRow('==text==', 'Highlighted text', '==vital clue==');
+    addRow('> text', 'Indented quote / excerpt', '> A hero never yields.');
+    addRow('- item', 'Bullet list', '- 3 torches');
+    addRow('1. item', 'Numbered list', '1. First step');
+    addRow('---', 'Page break (in Pages mode) or divider line', '---');
+    addRow('{@dice 1d20+3}', 'Interactive rollable dice tag', '{@dice 2d6+4 fire}');
+    addRow('[Link](url)', 'Clickable player hyperlink', '[Map](https://...)');
+  }
+
+  body.append(table);
+  details.append(body);
+  return details;
 }
 
 function renderDocumentDetail(item: LootItem): void {
@@ -886,30 +1106,52 @@ function renderDocumentDetail(item: LootItem): void {
     renderList();
   };
 
-  const titleInput = el("input");
-  titleInput.value = doc.title;
-  titleInput.placeholder = "Written on the paper; leave empty for none.";
-  titleInput.oninput = () => {
-    doc.title = titleInput.value;
-    markDirty();
-  };
+  const isNewspaper = doc.style === "newspaper";
 
-  detailEl.append(
-    field("Name", nameInput),
-    field("Title (optional)", titleInput),
-    commonFields(item),
-  );
+  detailEl.append(field(isNewspaper ? "Item name (inventory only)" : "Name", nameInput));
+  if (isNewspaper) {
+    detailEl.append(createNewspaperHeaderFields(doc, markDirty));
+  } else {
+    const titleInput = el("input");
+    titleInput.value = doc.title;
+    titleInput.placeholder = "Written on the paper; leave empty for none.";
+    titleInput.oninput = () => {
+      doc.title = titleInput.value;
+      markDirty();
+    };
+    detailEl.append(field("Title (optional)", titleInput));
+  }
+
+  detailEl.append(commonFields(item));
+
+  if (isNewspaper) {
+    detailEl.append(createNewspaperImageManager(doc, markDirty));
+  }
 
   const contentInput = el("textarea");
   contentInput.value = doc.content;
   contentInput.maxLength = MAX_DOC_CHARS;
   contentInput.rows = 12;
-  contentInput.placeholder =
-    "Write the letter, page or diary entry here.\n\n" +
-    "Blank lines start a new paragraph.\n" +
-    "A line with only --- starts a new page.\n" +
-    "*A paragraph in asterisks* becomes an editor's note " +
-    "(not in the document's handwriting).";
+  contentInput.placeholder = isNewspaper
+    ? "Write the newspaper story here.\n\n" +
+      "Authentic newspaper tropes & syntax:\n" +
+      "# Story headline (used when the headline field is blank)\n" +
+      "## Story subheading (used when the subheading field is blank)\n" +
+      "CITY, Date — Starts the lead story with an authentic dateline\n" +
+      "> \"Pull-quote from an official\" — Speaker Name\n" +
+      ">> \"BANNER PULL QUOTE\" — Emphasized quote within the story\n" +
+      "! ALERT: Highlight callout bar in the middle of the text\n" +
+      "### Section Crosshead (centered uppercase story divider)\n" +
+      "==highlighted printed text== inside paragraphs\n" +
+      "*Notice or inquiry text*\n" +
+      "--- Starts a new page\n" +
+      "![Caption|halftone](https://...) inline markdown illustration"
+    : "Write the letter, page or diary entry here.\n\n" +
+      "Blank lines start a new paragraph.\n" +
+      "A line with only --- starts a new page.\n" +
+      "*A paragraph in asterisks* becomes an editor's note " +
+      "(not in the document's handwriting).";
+
   const counter = el("div", "char-counter");
   const updateCounter = () => {
     counter.textContent = `${doc.content.length} / ${MAX_DOC_CHARS}`;
@@ -919,8 +1161,8 @@ function renderDocumentDetail(item: LootItem): void {
     updateCounter();
     markDirty();
   };
-  updateCounter();
-  detailEl.append(field("Content", contentInput), counter);
+  const syntaxGuide = buildDocumentSyntaxGuide(contentInput, isNewspaper);
+  detailEl.append(syntaxGuide, field("Content", contentInput), counter);
 }
 
 /** Style tab: paper style / condition / font pickers over a live preview. */
@@ -1005,15 +1247,61 @@ function renderStyleTab(item: LootItem, doc: LootDocument): void {
     field("Style", styleSelect),
     field("Paper", textureSelect),
     field("Layout", layoutSelect),
-    field("Font", fontSelect),
   );
+
+  if (doc.style === "newspaper") {
+    const filterSelect = el("select");
+    for (const filter of NEWSPAPER_PRINT_FILTERS) {
+      const option = el("option");
+      option.value = filter;
+      option.textContent = NEWSPAPER_PRINT_FILTER_META[filter].label;
+      option.title = NEWSPAPER_PRINT_FILTER_META[filter].description;
+      option.selected = filter === (doc.newspaperFilter ?? "halftone");
+      filterSelect.append(option);
+    }
+    filterSelect.onchange = () => {
+      doc.newspaperFilter = filterSelect.value as NewspaperPrintFilter;
+      markDirty();
+      renderDetail();
+    };
+    row.append(field("Print Ink Filter", filterSelect));
+
+    const headerSelect = el("select");
+    for (const headerStyle of NEWSPAPER_HEADER_STYLES) {
+      const option = el("option");
+      option.value = headerStyle;
+      option.textContent = NEWSPAPER_HEADER_META[headerStyle].label;
+      option.title = NEWSPAPER_HEADER_META[headerStyle].description;
+      option.selected = headerStyle === (doc.newspaperHeader ?? "tabloid-splash");
+      headerSelect.append(option);
+    }
+    headerSelect.onchange = () => {
+      doc.newspaperHeader = headerSelect.value as NewspaperHeaderStyle;
+      markDirty();
+      renderDetail();
+    };
+    row.append(field("Print headline style", headerSelect));
+  }
+
+  row.append(field("Font", fontSelect));
 
   const wrap = el("div", "preview-wrap");
   const stage = el("div", "paper-stage");
   stage.style.setProperty("--zoom", "0.95");
   renderDocument(stage, doc);
   wrap.append(stage);
-  detailEl.append(row, wrap);
+  detailEl.append(row);
+  if (doc.style === "newspaper") {
+    const headerHint = el("p", "hint newspaper-header-style-hint");
+    headerHint.textContent = NEWSPAPER_HEADER_META[doc.newspaperHeader ?? "tabloid-splash"].description;
+    detailEl.append(headerHint);
+    detailEl.append(createNewspaperLayoutPicker(doc.newspaperLayout, (layout) => {
+      doc.newspaperLayout = layout;
+      markDirty();
+      renderDetail();
+    }));
+  }
+  detailEl.append(wrap);
 }
 
 // --- restore banner ----------------------------------------------------------

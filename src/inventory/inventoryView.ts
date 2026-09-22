@@ -17,6 +17,7 @@ import { TransferManager } from "./TransferManager";
 import { NetworkProtocol, type SocketMessage } from "./NetworkProtocol";
 import { getLoot, openLootLogModal, openUserDocumentModal } from "../loot";
 import { buildCoinChips, buildCoinConverter } from "../coins";
+import { renderMarkdownInto } from "../markdown";
 
 const app = document.getElementById("app")!;
 
@@ -722,7 +723,7 @@ function renderItemSlot(
   const panel = el("div", "coin-panel");
   if (item.data?.description) {
     const desc = el("div", "slot-desc");
-    desc.textContent = item.data.description;
+    renderMarkdownInto(desc, item.data.description);
     panel.append(desc);
   }
   if (item.data?.coins) {

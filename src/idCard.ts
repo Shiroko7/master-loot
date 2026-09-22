@@ -1,4 +1,5 @@
 import { ID_ROW_FIELDS, type LootItem } from "./types";
+import { normalizeImageUrl } from "./markdown";
 
 /**
  * Render an ID card as a parchment credential: portrait frame, name,
@@ -48,7 +49,7 @@ export function renderIdCard(root: HTMLElement, item: LootItem): void {
       photo.remove();
       frame.append(buildLikeness(profile));
     };
-    photo.src = url;
+    photo.src = normalizeImageUrl(url);
     frame.append(photo);
   } else {
     frame.append(buildLikeness(profile));

@@ -79,6 +79,47 @@ Then add `http://localhost:5173/manifest.json` as an extension in Owlbear Rodeo.
 CORS for the OBR origin is preconfigured in `vite.config.ts` (dev + preview) and in
 `netlify.toml` (production), so no extra setup is needed.
 
+Newspaper layout checks run in Chromium with the production styles and fonts:
+
+```bash
+npx playwright install chromium
+npm run test:all
+npm run build
+```
+
+`test:browser` covers all four newspaper compositions and the saved
+legacy preset names with 0–10 pictures, measured
+column fullness, text preservation, image proportions, delayed assets, resizing,
+and spread navigation. It also checks that the compositions have different
+physical structures, and verifies all five print header styles, field mappings,
+saved headings, and header capacity at enlarged text sizes. Screenshots and
+failure traces go in `test-results/`.
+Open `/test/browser/newspaper.html` on the dev server for the article reproduction.
+Newspaper text flows to the next column/page only after the current one fills;
+`---` and new `# Story` headings still request an explicit new page.
+
+The composition picker offers Classic / Smart Fit (two tall columns), Front Page (an
+illustrated opening and wide introduction), Feature (one broad reading column),
+and Gazette Digest (two stacked bands of short columns). Smart Fit keeps the
+Classic grid on every page and scales pictures without switching column counts.
+Saved Editorial Dual presets map to Classic; saved 3-Column Broadsheet presets
+map to Gazette Digest.
+
+Newspaper headers have separate fields for the newspaper name, main story
+headline, story subheading, and edition/date/price. The headline receives the
+largest type; empty publication details never generate placeholder names or
+editions. A blank headline or subheading field uses the story's `#` or `##`
+heading. Older saved combined headline/deck values remain supported. The editor
+offers a button to move misplaced edition text into an empty headline field.
+
+The picture manager has up/down controls for reading order and a width selector
+for each attachment: Column width, Full page width, or the saved layout's default.
+Explicit widths take precedence over automatic hero slots. Full-width pictures
+span one page and divide the story into reading regions above and below them;
+image proportions and attachment order survive pagination and resizing.
+For exact story anchors, use `![Caption|page](url)` or
+`![Caption|column|engraving](url)` directly in the content.
+
 ## Deploy to Netlify
 
 The repo ships with `netlify.toml` (build command, publish dir, CORS headers):

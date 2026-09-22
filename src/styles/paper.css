@@ -74,6 +74,137 @@
   color: rgba(80, 68, 50, 0.92);
 }
 
+/* Markdown headings in documents */
+.paper-body .md-heading {
+  font-family: var(--doc-font, serif);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.1em 0 0.4em;
+  color: inherit;
+}
+
+.paper-body .md-h1 {
+  font-size: calc(1.35em * var(--font-scale, 1) * var(--font-adjust, 1));
+  border-bottom: 1px solid rgba(80, 60, 20, 0.35);
+  padding-bottom: 0.2em;
+}
+
+.paper-body .md-h2 {
+  font-size: calc(1.22em * var(--font-scale, 1) * var(--font-adjust, 1));
+}
+
+.paper-body .md-h3 {
+  font-size: calc(1.1em * var(--font-scale, 1) * var(--font-adjust, 1));
+}
+
+.paper-body .md-h4,
+.paper-body .md-h5,
+.paper-body .md-h6 {
+  font-size: calc(1em * var(--font-scale, 1) * var(--font-adjust, 1));
+  font-style: italic;
+}
+
+/* Blockquotes */
+.paper-body .md-quote {
+  margin: 0.9em 0;
+  padding: 0.4em 1em;
+  border-left: 3px solid rgba(80, 55, 20, 0.6);
+  background: rgba(80, 60, 30, 0.04);
+  font-style: italic;
+}
+
+/* Lists */
+.paper-body .md-list {
+  margin: 0.5em 0 0.9em;
+  padding-left: 1.8em;
+}
+
+.paper-body .md-list li {
+  margin-bottom: 0.3em;
+  line-height: 1.5;
+}
+
+.paper-body .md-task-item {
+  list-style-type: none;
+  margin-left: -1.2em;
+}
+
+.paper-body .md-task-checkbox {
+  margin-right: 0.45em;
+  vertical-align: middle;
+}
+
+/* Tables on paper */
+.paper-body .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.92em;
+}
+
+.paper-body .md-table th,
+.paper-body .md-table td {
+  border: 1px solid rgba(80, 60, 25, 0.35);
+  padding: 0.4em 0.7em;
+  text-align: left;
+}
+
+.paper-body .md-table th {
+  background: rgba(80, 60, 25, 0.09);
+  font-weight: 700;
+  border-bottom: 2px solid rgba(80, 60, 25, 0.5);
+}
+
+.paper-body .md-table tr:nth-child(even) {
+  background: rgba(80, 60, 25, 0.03);
+}
+
+/* Code blocks & inline code */
+.paper-body .md-code-block {
+  background: rgba(40, 30, 15, 0.07);
+  border: 1px solid rgba(70, 50, 20, 0.3);
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.85em;
+  margin: 0.8em 0;
+}
+
+.paper-body .md-inline-code {
+  background: rgba(40, 30, 15, 0.08);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.88em;
+  border: 1px solid rgba(70, 50, 20, 0.2);
+}
+
+/* Links */
+.paper-body .md-link {
+  color: #1a4b7c;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.paper-body .md-link:hover {
+  color: #0c2d4f;
+}
+
+/* D&D Tags */
+.md-tag {
+  display: inline-block;
+  background: rgba(140, 30, 20, 0.1);
+  color: #7d1c1c;
+  border: 1px solid rgba(140, 30, 20, 0.35);
+  border-radius: 3px;
+  padding: 0 0.35em;
+  font-size: 0.85em;
+  font-weight: 600;
+  font-family: "Cinzel", serif;
+  margin: 0 0.15em;
+}
+
 /* ---------------------------------------------------------------- letter */
 
 .paper-letter {
@@ -316,6 +447,10 @@
   font-size: 0.9em;
   color: rgba(58, 40, 16, 0.8);
   user-select: none;
+}
+
+.page-nav[hidden] {
+  display: none !important;
 }
 
 .page-nav button {
@@ -709,3 +844,756 @@
       transparent 74%
     );
 }
+
+/* ----------------------------------------------------------- newspaper */
+
+.paper-newspaper {
+  width: 58em;
+  max-width: 96vw;
+  box-sizing: border-box;
+  padding: 2em 2.6em 2.2em;
+  background: radial-gradient(
+    130% 110% at 30% 0%,
+    #f9f5e8 0%,
+    #f3ecd7 50%,
+    #e6dcc0 100%
+  );
+  color: #1c1814;
+  border-radius: 2px;
+  box-shadow:
+    0 1.2em 2.8em rgba(0, 0, 0, 0.52),
+    0 0.2em 0.5em rgba(0, 0, 0, 0.3);
+  height: auto;
+}
+
+/* Pages keep identical geometry when switching between one page and a spread. */
+.paper-newspaper.is-single,
+.paper-newspaper.is-spread {
+  padding: 1.8em 2.4em 2em;
+  max-width: 98vw;
+}
+
+.paper-newspaper.is-single { min-width: 0; }
+.paper-newspaper.is-spread { width: 92em; min-width: 52em; }
+
+/* printed double hairline frame */
+.paper-newspaper::before {
+  content: "";
+  position: absolute;
+  inset: 0.7em;
+  border: 1px solid rgba(40, 30, 15, 0.35);
+  outline: 1px solid rgba(40, 30, 15, 0.15);
+  outline-offset: 3px;
+  pointer-events: none;
+}
+
+/* Print headings: publication, edition, story headline, supporting deck. */
+.newspaper-front-header {
+  margin-bottom: 0.8em;
+  border-top: 2px solid #201a14;
+  padding-top: 0.3em;
+  text-align: center;
+  color: #1c1814;
+  overflow-wrap: anywhere;
+}
+.newspaper-nameplate {
+  font-family: "IM Fell English", serif;
+  font-size: calc(1.15em * var(--font-scale, 1));
+  line-height: 1.1;
+  margin-bottom: 0.25em;
+}
+.newspaper-edition-line {
+  padding: 0.3em 0;
+  border-top: 1px solid #443728;
+  border-bottom: 1px solid #443728;
+  font-family: "IM Fell English", serif;
+  font-size: calc(0.7em * var(--font-scale, 1));
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+}
+.newspaper-front-headline {
+  font-family: "IM Fell English", serif;
+  font-size: calc(2.15em * var(--font-scale, 1));
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin: 0.18em 0 0;
+  text-wrap: balance;
+}
+.newspaper-front-deck {
+  font-family: "IM Fell English", serif;
+  font-size: calc(1.05em * var(--font-scale, 1));
+  line-height: 1.25;
+  margin-top: 0.45em;
+  padding-bottom: 0.45em;
+  border-bottom: 1px solid #443728;
+  text-wrap: pretty;
+}
+
+/* Tabloid: a compact nameplate and a commanding all-caps lead. */
+.newspaper-header-tabloid-splash .newspaper-nameplate {
+  font-family: "Cinzel", serif;
+  font-size: calc(0.95em * var(--font-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.newspaper-header-tabloid-splash .newspaper-front-headline {
+  text-transform: uppercase;
+  font-weight: 900;
+}
+
+/* Gazette: centered old-style serif, double rules, title-case headline. */
+.newspaper-header-classic-masthead { border-top: 3px double #201a14; }
+.newspaper-header-classic-masthead .newspaper-nameplate {
+  font-size: calc(1.5em * var(--font-scale, 1));
+  font-style: italic;
+}
+.newspaper-header-classic-masthead .newspaper-edition-line {
+  border-bottom: 3px double #201a14;
+}
+.newspaper-header-classic-masthead .newspaper-front-headline {
+  font-size: calc(1.95em * var(--font-scale, 1));
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.newspaper-header-classic-masthead .newspaper-front-deck { font-style: italic; }
+
+/* Daily: centered publication over a flush-left story and a strong top rule. */
+.newspaper-header-modern-broadsheet { border-top-width: 4px; }
+.newspaper-header-modern-broadsheet .newspaper-nameplate {
+  font-family: "Cinzel", serif;
+  font-size: calc(1.15em * var(--font-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.newspaper-header-modern-broadsheet .newspaper-front-headline,
+.newspaper-header-modern-broadsheet .newspaper-front-deck { text-align: left; }
+.newspaper-header-modern-broadsheet .newspaper-front-headline { text-wrap: pretty; }
+
+/* Extra: the banner is set between heavy ink rules directly on newsprint. */
+.newspaper-header-banner-screamer { border-top: 0; padding-top: 0; }
+.newspaper-header-banner-screamer .newspaper-nameplate {
+  font-size: calc(0.95em * var(--font-scale, 1));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.newspaper-header-banner-screamer .newspaper-edition-line { border: 0; }
+.newspaper-header-banner-screamer .newspaper-front-headline {
+  border-top: 5px solid #201a14;
+  border-bottom: 4px double #201a14;
+  padding: 0.14em 0;
+  font-size: calc(2.3em * var(--font-scale, 1));
+  text-transform: uppercase;
+  font-weight: 900;
+}
+.newspaper-header-banner-screamer .newspaper-front-deck { border-bottom: 0; padding-bottom: 0; }
+
+/* Literary review: fine rules with an italic feature headline. */
+.newspaper-header-minimal-chic { border-top-width: 1px; }
+.newspaper-header-minimal-chic .newspaper-nameplate {
+  font-size: calc(0.9em * var(--font-scale, 1));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.newspaper-header-minimal-chic .newspaper-edition-line { border-top: 0; }
+.newspaper-header-minimal-chic .newspaper-front-headline {
+  text-align: left;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.newspaper-header-minimal-chic .newspaper-front-deck { text-align: left; }
+
+/* Authentic Newspaper Jumpline (Continued on Page X) */
+.newspaper-jumpline {
+  display: block;
+  text-align: right;
+  font-family: "Cinzel", serif;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3b2c1b;
+  margin-top: 0.9em;
+  padding-top: 0.4em;
+  border-top: 1px dashed rgba(40, 30, 15, 0.35);
+  font-style: normal;
+}
+
+.newspaper-jumpline-start {
+  display: block;
+  text-align: center;
+  font-family: "Cinzel", serif;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #4a3826;
+  margin-bottom: 0.9em;
+  padding: 0.3em 0;
+  border-bottom: 1px dashed rgba(40, 30, 15, 0.35);
+}
+
+/* Inside-page running header */
+.newspaper-running-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #201a14;
+  padding-bottom: 0.2em;
+  margin-bottom: 0.7em;
+  font-family: "Cinzel", serif;
+  font-size: 0.68em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #443728;
+}
+
+/* Headline & Subhead */
+.newspaper-headline-wrap {
+  margin: 0 0 0.75em;
+  text-align: center;
+}
+
+.newspaper-headline {
+  font-family: "Cinzel", "IM Fell English", serif;
+  font-size: calc(1.7em * var(--font-scale, 1));
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0 0 0.25em;
+  color: #120f0d;
+}
+
+.newspaper-subhead {
+  font-family: "IM Fell English", serif;
+  font-style: italic;
+  font-size: calc(1.05em * var(--font-scale, 1));
+  line-height: 1.35;
+  color: #3b3024;
+  margin: 0;
+  padding-bottom: 0.45em;
+  border-bottom: 1px solid rgba(40, 30, 15, 0.25);
+}
+
+/* Article typography */
+.newspaper-text {
+  font-family: var(--doc-font, "IM Fell English", serif);
+  font-size: calc(0.95em * var(--font-scale, 1) * var(--font-adjust, 1));
+  line-height: 1.36;
+  text-align: justify;
+  hyphens: auto;
+  color: #1c1814;
+}
+
+.newspaper-text p {
+  margin: 0 0 0.45em;
+  text-indent: 1em;
+}
+
+.newspaper-text p:first-of-type {
+  text-indent: 0;
+}
+
+.newspaper-text p.has-drop-cap::first-letter {
+  font-family: "Cinzel", "Pirata One", serif;
+  font-size: 3em;
+  float: left;
+  line-height: 0.8;
+  padding: 0.06em 0.1em 0 0;
+  color: #14110e;
+  font-weight: 700;
+}
+
+/* Eye-catching Pull Quote (Iconic newspaper trope: large, centered, double-ruled) */
+.newspaper-quote {
+  margin: 0.7em 0;
+  padding: 0.55em 0.8em;
+  border-top: 3px double #201a14;
+  border-bottom: 3px double #201a14;
+  text-align: center;
+  font-style: italic;
+  font-size: calc(1.32em * var(--font-scale, 1));
+  line-height: 1.3;
+  color: #1a140e;
+  background: rgba(32, 26, 20, 0.035);
+  box-sizing: border-box;
+}
+
+.newspaper-quote.is-banner {
+  font-size: calc(1.55em * var(--font-scale, 1));
+  padding: 1.1em 1.4em;
+  border-top: 4px double #1a140e;
+  border-bottom: 4px double #1a140e;
+  background: rgba(32, 26, 20, 0.055);
+  margin: 1.4em 0;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.newspaper-quote .quote-body {
+  display: inline;
+}
+
+.newspaper-quote .quote-mark {
+  font-family: "Cinzel", "Georgia", serif;
+  font-size: 1.6em;
+  line-height: 0;
+  vertical-align: -0.18em;
+  color: #5c4730;
+  opacity: 0.85;
+}
+
+.newspaper-quote-author {
+  display: block;
+  font-family: "Cinzel", serif;
+  font-size: 0.6em;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #4a3e2e;
+  margin-top: 0.65em;
+  text-align: center;
+}
+
+/* Eye-catching Highlight Bar / Callout Line in middle of text */
+.newspaper-highlight-bar {
+  margin: 1.1em 0;
+  padding: 0.65em 0.9em;
+  border-left: 4px solid #201a14;
+  border-top: 1px solid rgba(32, 26, 20, 0.25);
+  border-bottom: 1px solid rgba(32, 26, 20, 0.25);
+  border-right: 1px solid rgba(32, 26, 20, 0.15);
+  background: rgba(32, 26, 20, 0.045);
+  font-size: calc(1.06em * var(--font-scale, 1));
+  line-height: 1.35;
+  color: #14110e;
+  box-sizing: border-box;
+}
+
+.newspaper-highlight-badge {
+  display: inline-block;
+  font-family: "Cinzel", serif;
+  font-size: 0.72em;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: #201a14;
+  color: #f7f3e8;
+  padding: 0.15em 0.45em;
+  margin-right: 0.55em;
+  border-radius: 1px;
+  vertical-align: 0.08em;
+}
+
+.newspaper-highlight-text {
+  font-weight: 600;
+}
+
+/* In-column Section Subhead (Crosshead) */
+.newspaper-crosshead {
+  font-family: "Cinzel", serif;
+  font-size: calc(0.9em * var(--font-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #201a14;
+  margin: 1.25em 0 0.65em;
+  padding: 0.35em 0;
+  border-top: 1px solid rgba(32, 26, 20, 0.35);
+  border-bottom: 1px solid rgba(32, 26, 20, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+}
+
+.newspaper-crosshead::before,
+.newspaper-crosshead::after {
+  content: "✦";
+  font-size: 0.75em;
+  opacity: 0.55;
+}
+
+/* Iconic city / dateline lead: WATERDEEP, Ches 14 — */
+.newspaper-dateline {
+  font-family: "Cinzel", serif;
+  font-size: 0.84em;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #14110e;
+  margin-right: 0.25em;
+}
+
+/* Inline printed highlight */
+mark.md-highlight {
+  background: rgba(225, 185, 60, 0.35);
+  color: inherit;
+  padding: 0.06em 0.25em;
+  border-radius: 2px;
+  border-bottom: 1.5px solid rgba(180, 135, 20, 0.75);
+  font-weight: 600;
+}
+
+
+/* Picture slots & newsprint filter */
+.newspaper-slot {
+  margin-bottom: 0.9em;
+}
+
+.newspaper-slot-hero {
+  margin-bottom: 0.75em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.newspaper-slot-hero .newspaper-figure {
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Aspect-ratio responsive constraints for hero banner slots */
+.newspaper-slot-hero .newspaper-figure.aspect-square {
+  max-width: 16em;
+}
+
+.newspaper-slot-hero .newspaper-figure.aspect-portrait {
+  max-width: 15em;
+}
+
+.newspaper-slot-hero .newspaper-figure.aspect-landscape {
+  max-width: 100%;
+  max-height: 16em;
+}
+
+.newspaper-figure {
+  margin: 0;
+  padding: 0.3em;
+  background: rgba(40, 30, 15, 0.03);
+  border: 1px solid rgba(40, 30, 15, 0.45);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
+  box-sizing: border-box;
+}
+
+.newspaper-img-frame {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  background-color: #f1ebd8;
+  border: 1px solid rgba(40, 30, 15, 0.35);
+  box-sizing: border-box;
+}
+
+.newspaper-img {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 18em;
+  display: block;
+  object-fit: contain;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.newspaper-img-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+/* 1. Halftone Dot Press Filter (Default) */
+.newspaper-figure:not([class*="newspaper-print-"]) .newspaper-img,
+.newspaper-print-halftone .newspaper-img {
+  filter: grayscale(1) contrast(1.38) brightness(0.96) sepia(0.22);
+  mix-blend-mode: multiply;
+}
+
+.newspaper-figure:not([class*="newspaper-print-"]) .newspaper-img-frame::after,
+.newspaper-print-halftone .newspaper-img-frame::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Ccircle cx='1' cy='1' r='0.75' fill='%231a140e' opacity='0.3'/%3E%3Ccircle cx='3' cy='3' r='0.75' fill='%231a140e' opacity='0.3'/%3E%3C/svg%3E");
+  background-size: 4px 4px;
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-halftone:hover .newspaper-img-frame::after {
+  opacity: 0.15;
+}
+
+.newspaper-print-halftone:hover .newspaper-img {
+  filter: grayscale(0.85) contrast(1.2) brightness(0.98) sepia(0.15);
+}
+
+/* 2. Woodcut / Engraving Line Hatching Filter */
+.newspaper-print-engraving .newspaper-img {
+  filter: grayscale(1) contrast(2.3) brightness(0.88) sepia(0.28);
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-engraving .newspaper-img-frame::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cline x1='0' y1='4' x2='4' y2='0' stroke='%231a140e' stroke-width='0.85' opacity='0.32'/%3E%3C/svg%3E");
+  background-size: 4px 4px;
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-engraving:hover .newspaper-img-frame::after {
+  opacity: 0.15;
+}
+
+.newspaper-print-engraving:hover .newspaper-img {
+  filter: grayscale(0.9) contrast(1.7) brightness(0.94) sepia(0.2);
+}
+
+/* 3. Sepia Press Photo / Daguerreotype Filter */
+.newspaper-print-sepia .newspaper-img {
+  filter: grayscale(0.8) sepia(0.65) contrast(1.22) brightness(0.92);
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-sepia .newspaper-img-frame {
+  box-shadow: inset 0 0 1.4em rgba(35, 22, 10, 0.45);
+}
+
+.newspaper-print-sepia .newspaper-img-frame::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'%3E%3Ccircle cx='1' cy='2' r='0.55' fill='%23281a0e' opacity='0.22'/%3E%3Ccircle cx='4' cy='5' r='0.55' fill='%23281a0e' opacity='0.22'/%3E%3Ccircle cx='5' cy='1' r='0.45' fill='%23281a0e' opacity='0.16'/%3E%3C/svg%3E");
+  background-size: 6px 6px;
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-sepia:hover .newspaper-img-frame::after {
+  opacity: 0.12;
+}
+
+.newspaper-print-sepia:hover .newspaper-img {
+  filter: grayscale(0.6) sepia(0.45) contrast(1.1) brightness(0.96);
+}
+
+/* 4. Color Lithograph Press Filter */
+.newspaper-print-color-press .newspaper-img {
+  filter: contrast(1.18) saturate(1.1) sepia(0.12) brightness(0.95);
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-color-press .newspaper-img-frame::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Ccircle cx='1' cy='1' r='0.65' fill='%231a140e' opacity='0.2'/%3E%3Ccircle cx='3' cy='3' r='0.65' fill='%231a140e' opacity='0.2'/%3E%3C/svg%3E");
+  background-size: 4px 4px;
+  mix-blend-mode: multiply;
+}
+
+.newspaper-print-color-press:hover .newspaper-img-frame::after {
+  opacity: 0.08;
+}
+
+/* 5. Raw / Unfiltered */
+.newspaper-print-raw .newspaper-img {
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+.newspaper-print-raw .newspaper-img-frame::after {
+  display: none;
+}
+
+.newspaper-caption {
+  font-family: var(--doc-font, serif);
+  font-size: 0.78em;
+  font-style: italic;
+  line-height: 1.25;
+  text-align: center;
+  color: #382e22;
+  padding: 0.4em 0.2em 0.1em;
+  border-top: 1px dotted rgba(40, 30, 15, 0.35);
+  margin-top: 0.3em;
+}
+
+.newspaper-figure.newspaper-img-broken {
+  border: 1px dashed rgba(40, 30, 15, 0.5);
+  padding: 1em;
+}
+
+.newspaper-figure.newspaper-img-broken .newspaper-img-frame {
+  display: none;
+}
+
+.newspaper-img-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3em;
+  min-height: 5em;
+  font-style: italic;
+  font-size: 0.8em;
+  color: rgba(40, 30, 15, 0.75);
+}
+
+/* Bulletin / Wanted proclamation frame */
+.newspaper-bulletin {
+  border: 2px solid #261f17;
+  padding: 0.6em;
+  margin-bottom: 0.8em;
+  background: rgba(40, 30, 15, 0.04);
+  text-align: center;
+}
+
+.newspaper-bulletin-title {
+  font-family: "Cinzel", serif;
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #7d1c1c;
+  border-bottom: 1px solid #261f17;
+  padding-bottom: 0.25em;
+  margin-bottom: 0.4em;
+}
+
+/* Physical page geometry is shared by measurement and the visible spread. */
+.newspaper-page-slide {
+  width: var(--newspaper-page-width);
+  height: var(--newspaper-page-height);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+}
+
+.newspaper-page-slide > header,
+.newspaper-headline-wrap,
+.newspaper-slot-hero { flex: none; }
+
+.newspaper-running-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 11em;
+  gap: .5em;
+}
+.newspaper-page-number { white-space: nowrap; text-align: right; }
+.newspaper-running-header > :last-child { grid-column: 1 / -1; }
+.newspaper-running-header > :last-child:empty { display: none; }
+
+.newspaper-content-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.newspaper-column-grid {
+  --column-gap: 1.4em;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--column-gap);
+  flex: 1;
+  min-height: 0;
+  direction: ltr;
+}
+
+/* Feature: a single broad reading column, closer to a Sunday feature essay. */
+.newspaper-feature-grid {
+  grid-template-columns: minmax(0, 1fr);
+  font-size: calc(1.08em * var(--font-scale, 1) * var(--font-adjust, 1));
+  line-height: 1.45;
+}
+.layout-column-inset .newspaper-content-area {
+  border-top: 3px double rgba(40, 30, 15, .5);
+  padding-top: .7em;
+}
+.layout-column-inset .newspaper-slot-col { width: 78%; margin: .7em auto; }
+.layout-column-inset .newspaper-quote { width: 85%; margin: 1em auto; }
+
+/* Digest: four short reading regions grouped into two horizontal bands. */
+.layout-gazette-mosaic .newspaper-content-area { gap: 1.1em; }
+.newspaper-digest-band + .newspaper-digest-band {
+  border-top: 3px double rgba(40, 30, 15, .6);
+  padding-top: .8em;
+}
+.newspaper-digest-band { --column-gap: 1.2em; }
+
+/* Front Page: a wide introductory deck above the main report. */
+.newspaper-lead-band {
+  flex: none;
+  margin: 0 0 .8em;
+  padding: .5em 0;
+  border-top: 1px solid rgba(40, 30, 15, .4);
+  border-bottom: 3px double rgba(40, 30, 15, .5);
+  font-size: calc(1.1em * var(--font-scale, 1) * var(--font-adjust, 1));
+  line-height: 1.4;
+}
+
+.newspaper-column {
+  position: relative;
+  display: flow-root;
+  min-width: 0;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+
+.newspaper-column:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--column-gap) / -2);
+  border-right: 1px solid rgba(40, 30, 15, .24);
+}
+
+.newspaper-text p {
+  display: flow-root;
+  margin: 0 0 .45em;
+  text-indent: 1em;
+}
+
+.newspaper-text p.has-drop-cap,
+.newspaper-text p.is-continuation { text-indent: 0; }
+.newspaper-text p.is-split-start { margin-bottom: 0; text-align-last: justify; }
+.newspaper-column > :first-child { margin-top: 0; }
+
+.newspaper-slot { margin: .45em 0 .65em; }
+.newspaper-slot-col .newspaper-img {
+  max-height: min(13.5em, var(--newspaper-image-height, 13.5em));
+}
+.newspaper-slot-hero .newspaper-img { max-height: calc(var(--newspaper-page-height) * .27); }
+.newspaper-slot-hero .newspaper-figure { max-width: 100%; }
+
+.newspaper-content-area.has-wide-pictures { gap: 0; }
+.newspaper-reading-region { flex: none; display: flex; flex-direction: column; min-height: 0; }
+.layout-gazette-mosaic .newspaper-reading-region { gap: 1.1em; }
+.newspaper-slot-page { flex: none; width: 100%; margin: 0; padding: .5em 0; box-sizing: border-box; }
+.newspaper-slot-page .newspaper-figure { max-width: 100%; margin: 0 auto; }
+.newspaper-slot-page .newspaper-img { max-height: var(--newspaper-wide-image-height); }
+
+.newspaper-spreads-container { width: 100%; }
+.newspaper-spread {
+  display: grid;
+  grid-template-columns: repeat(2, var(--newspaper-page-width));
+  gap: 3em;
+  position: relative;
+}
+.newspaper-spread[hidden] { display: none; }
+.newspaper-spread + .newspaper-spread { margin-top: 2em; }
+.newspaper-spread::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--newspaper-page-width) + 1.5em);
+  width: 1px;
+  background: rgba(40, 30, 15, .28);
+  box-shadow: -3px 0 6px -1px rgba(30, 20, 10, .14), 3px 0 6px -1px rgba(30, 20, 10, .14);
+  pointer-events: none;
+}
+.is-single .newspaper-spread { grid-template-columns: var(--newspaper-page-width); }
+.is-single .newspaper-spread::after { display: none; }
+.paper-newspaper .page-nav { font-size: .75em; bottom: 1em; }

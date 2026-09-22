@@ -10,6 +10,7 @@ import { TransferManager } from "./inventory/TransferManager";
 import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
 import { NetworkProtocol, type SocketMessage } from "./inventory/NetworkProtocol";
 import type { UserInventoryItem } from "./modules/inventory/UserInventoryModel";
+import { renderMarkdownInto } from "./markdown";
 import {
   RARITY_META,
   formatCoins,
@@ -107,7 +108,7 @@ function renderCurrencySlot(item: LootItem, tokenName: string): HTMLElement[] {
   const panel = el("div", "coin-panel");
   if (item.description) {
     const desc = el("div", "slot-desc");
-    desc.textContent = item.description;
+    renderMarkdownInto(desc, item.description);
     panel.append(desc);
   }
   panel.append(buildCoinChips(coins));
@@ -185,8 +186,10 @@ function renderSlot(item: LootItem, tokenName: string): HTMLElement {
       void openDocumentModal(tokenId, item.id, { width: 720, height: 600 });
   } else if (item.description || href) {
     if (openDescriptions.has(item.id)) {
-      const desc = el("span", "slot-desc");
-      desc.textContent = item.description ?? "";
+      const desc = el("div", "slot-desc");
+      if (item.description) {
+        renderMarkdownInto(desc, item.description);
+      }
       if (href) {
         const link = el("a", "slot-link");
         link.href = href;
@@ -195,7 +198,6 @@ function renderSlot(item: LootItem, tokenName: string): HTMLElement {
         link.textContent = `${new URL(href).hostname} ↗`;
         // Follow the link without also toggling the slot closed.
         link.onclick = (event) => event.stopPropagation();
-        if (item.description) desc.append(el("br"));
         desc.append(link);
       }
       slot.append(desc);
