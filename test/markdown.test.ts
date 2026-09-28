@@ -93,6 +93,7 @@ import {
   renderInlineMarkdown,
   renderMarkdown,
   renderMarkdownInto,
+  parseFigureSpec,
 } from "../src/markdown";
 
 test("isSafeUrl: validates safe web and mailto protocols and blocks dangerous ones", () => {
@@ -206,10 +207,88 @@ test("renderInlineMarkdown: parses links and images with safe URLs", () => {
   assert.equal(link.href, "https://waterdeep.org/map");
   assert.equal(link.target, "_blank");
 
-  const img = elements.find((e) => e.tagName === "IMG");
-  assert.ok(img, "Should parse image as <img> tag");
+  const figure = elements.find((e) => e.className.includes("md-figure"));
+  assert.ok(figure, "Should wrap image in an md-figure span");
+  assert.equal(figure.tagName, "SPAN");
+  const frame = figure.children[0] as MockElement;
+  const img = frame.children[0] as MockElement;
+  assert.equal(img.tagName, "IMG");
   assert.equal(img.src, "https://waterdeep.org/compass.png");
   assert.equal(img.alt, "Compass");
+});
+
+test("parseFigureSpec: defaults depend on standalone vs in-text", () => {
+  assert.deepEqual(parseFigureSpec("Mill", true), {
+    caption: "Mill",
+    placement: "center",
+    size: "large",
+    look: "ink",
+    fit: false,
+    page: false,
+  });
+  assert.deepEqual(parseFigureSpec("Her", false), {
+    caption: "Her",
+    placement: "left",
+    size: "small",
+    look: "ink",
+    fit: false,
+    page: false,
+  });
+});
+
+test("parseFigureSpec: reads options in any order, keeps unknown words in caption", () => {
+  const spec = parseFigureSpec("Old map| PHOTO |right|medium", false);
+  assert.equal(spec.caption, "Old map");
+  assert.equal(spec.placement, "right");
+  assert.equal(spec.size, "medium");
+  assert.equal(spec.look, "photo");
+
+  assert.equal(parseFigureSpec("Cats | dogs", true).caption, "Cats | dogs");
+  // A floated picture can never be full width.
+  assert.equal(parseFigureSpec("x|left|full", false).size, "large");
+  assert.equal(parseFigureSpec("x|center", false).size, "medium");
+});
+
+test("renderMarkdownInto: a picture alone on a line becomes a block figure between paragraphs", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(
+    target as unknown as HTMLElement,
+    "First line.\n![The mill|photo](https://example.com/mill.png)\nSecond line.",
+  );
+  const tags = target.children.map((c) => (c as MockElement).tagName);
+  assert.deepEqual(tags, ["P", "FIGURE", "P"]);
+  const figure = target.children[1] as MockElement;
+  assert.ok(figure.className.includes("md-figure-center"));
+  assert.ok(figure.className.includes("md-look-photo"));
+  const caption = figure.children[1] as MockElement;
+  assert.equal(caption.tagName, "FIGCAPTION");
+});
+
+test("renderMarkdownInto: a picture inside a sentence floats within the paragraph", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(
+    target as unknown as HTMLElement,
+    "![](https://example.com/her.png) I began writing this because of her.",
+  );
+  assert.equal(target.children.length, 1);
+  const p = target.children[0] as MockElement;
+  assert.equal(p.tagName, "P");
+  // The mock keeps the appended fragment as a single child.
+  const inline = p.children[0] as unknown as MockDocumentFragment;
+  const figure = inline.children[0] as MockElement;
+  assert.equal(figure.tagName, "SPAN");
+  assert.ok(figure.className.includes("md-figure-left"));
+  assert.ok(figure.className.includes("md-figure-small"));
+  assert.equal(figure.children.length, 1, "No caption span for an empty caption");
+});
+
+test("renderMarkdownInto: unsafe picture URLs never produce an <img>", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement, "![x](javascript:void0)");
+  const figure = target.children[0] as MockElement;
+  assert.ok(figure.className.includes("md-figure-broken"));
+  const frame = figure.children[0] as MockElement;
+  assert.equal(frame.children.length, 0);
 });
 
 test("renderInlineMarkdown: parses D&D dice tags {@dice ...}", () => {
@@ -327,4 +406,43 @@ test("renderMarkdown: returns a wrapper container element", () => {
   assert.equal(result.tagName, "DIV");
   assert.equal(result.className, "md-container");
   assert.ok(result.children.length > 0);
+});
+
+test("parseFigureSpec: |NN% sets an exact width and |fit keeps it on one page", () => {
+  const spec = parseFigureSpec("Map|60%|fit", true);
+  assert.equal(spec.caption, "Map");
+  assert.equal(spec.widthPercent, 60);
+  assert.equal(spec.fit, true);
+
+  assert.equal(parseFigureSpec("x|150%", true).widthPercent, 100, "clamped to the text width");
+  assert.equal(parseFigureSpec("x|2%", true).widthPercent, 5, "never vanishes");
+  assert.equal(parseFigureSpec("x|33.5 %", false).widthPercent, 33.5);
+  assert.equal(parseFigureSpec("x", true).widthPercent, undefined);
+  assert.equal(parseFigureSpec("x", true).fit, false);
+  // A percentage counts as an explicit size: in-text centered stays as written.
+  assert.equal(parseFigureSpec("x|center|40%", false).widthPercent, 40);
+});
+
+test("createFigure: custom width and fit become classes plus an inline width", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement, "![|45%|fit](https://example.com/a.png)");
+  const figure = target.children[0] as MockElement;
+  assert.ok(figure.className.includes("md-figure-custom"));
+  assert.ok(figure.className.includes("md-figure-fit"));
+  assert.equal(figure.style.width, "45%");
+});
+
+test("parseFigureSpec: |page makes a centered full-width picture on its own page", () => {
+  const spec = parseFigureSpec("Harbour|left|40%|page", false);
+  assert.equal(spec.page, true);
+  assert.equal(spec.placement, "center", "a full page is never floated");
+  assert.equal(spec.size, "full");
+  assert.equal(spec.widthPercent, undefined, "a full page ignores percentages");
+  assert.equal(spec.caption, "Harbour");
+
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement, "![|page|fit](https://example.com/a.png)");
+  const figure = target.children[0] as MockElement;
+  assert.ok(figure.className.includes("md-figure-page"));
+  assert.ok(figure.className.includes("md-figure-fit"));
 });

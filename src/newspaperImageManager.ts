@@ -1,4 +1,5 @@
 import { normalizeImageUrl, isImgurAlbumUrl } from "./markdown";
+import { pickOwlbearImages } from "./owlbearImages";
 import { NEWSPAPER_PRINT_FILTERS, NEWSPAPER_PRINT_FILTER_META,
   type LootDocument, type NewspaperImage, type NewspaperPrintFilter } from "./types";
 
@@ -22,7 +23,22 @@ export function createNewspaperImageManager(doc: LootDocument, onChange: () => v
     onChange();
     refresh();
   };
-  head.append(title, addBtn);
+  const owlbearBtn = el("button", "btn");
+  owlbearBtn.type = "button";
+  owlbearBtn.textContent = "🦉 From Owlbear";
+  owlbearBtn.title = "Add pictures you uploaded to Owlbear";
+  owlbearBtn.onclick = async () => {
+    const picked = await pickOwlbearImages(true);
+    if (picked.length === 0) return;
+    for (const { url } of picked) {
+      (doc.images ??= []).push({ url, caption: "", width: "column" });
+    }
+    onChange();
+    refresh();
+  };
+  const actions = el("div", "doc-image-actions");
+  actions.append(owlbearBtn, addBtn);
+  head.append(title, actions);
 
   const hint = el("div", "doc-image-hint");
   hint.textContent =

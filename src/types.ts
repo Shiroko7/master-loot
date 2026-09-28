@@ -73,7 +73,8 @@ export type DocFont =
   | "im-fell-english"
   | "medievalsharp"
   | "uncial-antiqua"
-  | "pirata-one";
+  | "pirata-one"
+  | "kaushan-script";
 
 export interface LootDocument {
   style: DocumentStyle;
@@ -165,7 +166,7 @@ export type CoinPurse = Partial<Record<CoinKind, number>>;
 
 export interface LootItem {
   id: string;
-  kind: "item" | "document" | "currency" | "idcard";
+  kind: "item" | "document" | "currency" | "idcard" | "picture";
   name: string;
   quantity: number;
   rarity: Rarity;
@@ -179,6 +180,11 @@ export interface LootItem {
   document?: LootDocument;
   coins?: CoinPurse;
   profile?: IdProfile;
+  /**
+   * `picture` items: direct link to the image (usually an Owlbear upload).
+   * The item's description is shown under it.
+   */
+  imageUrl?: string;
 }
 
 export interface LootGroup {
@@ -470,6 +476,7 @@ export const DOC_FONTS: readonly DocFont[] = [
   "medievalsharp",
   "uncial-antiqua",
   "pirata-one",
+  "kaushan-script",
 ];
 
 /**
@@ -520,6 +527,11 @@ export const DOC_FONT_META: Record<
     label: "Blackletter",
     family: '"Pirata One", fantasy',
     adjust: 1.15,
+  },
+  "kaushan-script": {
+    label: "Ink brush",
+    family: '"Kaushan Script", cursive',
+    adjust: 1.1,
   },
 };
 
@@ -575,6 +587,18 @@ export function createIdCardItem(): LootItem {
     rarity: "none",
     icon: "🪪",
     profile: {},
+  };
+}
+
+export function createPictureItem(): LootItem {
+  return {
+    id: crypto.randomUUID(),
+    kind: "picture",
+    name: "Picture",
+    quantity: 1,
+    rarity: "none",
+    icon: "🖼️",
+    imageUrl: "",
   };
 }
 

@@ -10,6 +10,7 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/medievalsharp/400.css";
 import "@fontsource/uncial-antiqua/400.css";
 import "@fontsource/pirata-one/400.css";
+import "@fontsource/kaushan-script/400.css";
 import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
 import "./styles/paper.css";
@@ -18,13 +19,17 @@ import { closeWindow, setupWindowResizer } from "./windowResizer";
 import { fetchLootItem, parseItemLink, safeHttpUrl } from "./fiveETools";
 import { getLoot, getToken, saveLoot } from "./loot";
 import { renderIdCard } from "./idCard";
+import { buildSlotPicture, renderPicture } from "./pictureView";
 import { renderDocument } from "./paperRender";
+import { createDocumentReader, type DocumentReader } from "./documentReader";
 import { createNewspaperLayoutPicker } from "./newspaperLayoutPicker";
 import { createNewspaperHeaderFields } from "./newspaperHeaderFields";
 import { createNewspaperImageManager } from "./newspaperImageManager";
 import { getBackup } from "./storage";
 import { buildCoinConverter } from "./coins";
 import { renderMarkdownInto, isImgurAlbumUrl } from "./markdown";
+import { pickOwlbearImages } from "./owlbearImages";
+import { createEmojiPicker } from "./emojiPicker";
 import {
   COIN_KINDS,
   COIN_META,
@@ -50,6 +55,7 @@ import {
   createContainer,
   createCurrencyItem,
   createIdCardItem,
+  createPictureItem,
   createLootDocument,
   createLootItem,
   type LootContainer,
@@ -101,9 +107,57 @@ function selected(): LootItem | undefined {
 
 // --- persistence -----------------------------------------------------------
 
+/*
+ * Auto-save: every edit goes through markDirty(), which schedules a save
+ * once typing pauses (AUTOSAVE_IDLE_MS), or at the latest AUTOSAVE_MAX_MS
+ * after the first unsaved edit so long typing sessions still get saved.
+ * Saves never overlap: edits made while one is in flight trigger another
+ * right after it. The status text always shows what state the loot is in,
+ * and the Save button / Ctrl+S still save immediately.
+ */
+const AUTOSAVE_IDLE_MS = 1200;
+const AUTOSAVE_MAX_MS = 5000;
+const AUTOSAVE_RETRY_MS = 5000;
+const AUTOSAVE_PREF_KEY = "master-loot:autosave";
+
+let autosave = readAutosavePref();
+let idleTimer: number | undefined;
+let maxTimer: number | undefined;
+let saving: Promise<void> | null = null;
+
+function readAutosavePref(): boolean {
+  try {
+    return localStorage.getItem(AUTOSAVE_PREF_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function writeAutosavePref(on: boolean): void {
+  try {
+    localStorage.setItem(AUTOSAVE_PREF_KEY, on ? "on" : "off");
+  } catch {
+    // Preference only; the editor works the same without it.
+  }
+}
+
+function clearAutosaveTimers(): void {
+  window.clearTimeout(idleTimer);
+  window.clearTimeout(maxTimer);
+  idleTimer = maxTimer = undefined;
+}
+
+function scheduleAutosave(): void {
+  if (!autosave) return;
+  window.clearTimeout(idleTimer);
+  idleTimer = window.setTimeout(() => void saveNow(), AUTOSAVE_IDLE_MS);
+  maxTimer ??= window.setTimeout(() => void saveNow(), AUTOSAVE_MAX_MS);
+}
+
 function markDirty(): void {
   dirty = true;
-  statusEl.textContent = "Unsaved changes";
+  if (!saving) statusEl.textContent = autosave ? "Editing…" : "Unsaved changes";
+  scheduleAutosave();
 }
 
 function errorText(error: unknown): string {
@@ -112,30 +166,53 @@ function errorText(error: unknown): string {
 }
 
 async function saveNow(): Promise<void> {
+  clearAutosaveTimers();
+  // One save at a time; whatever changed meanwhile is saved right after.
+  while (saving) await saving;
   if (!dirty) return;
   dirty = false;
   statusEl.textContent = "Saving…";
   statusEl.title = "";
-  try {
-    // Badge/sparkle attachments are managed solely by the GM background
-    // script reacting to this metadata change — one writer, no duplicates.
-    await saveLoot(tokenId, loot);
-    statusEl.textContent = "Saved ✓";
-  } catch (error) {
-    console.error("Master Loot: failed to save", error);
-    statusEl.textContent = `Save failed: ${errorText(error)}`;
-    statusEl.title = String(error);
-    dirty = true;
-  }
+  saving = (async () => {
+    try {
+      // Badge/sparkle attachments are managed solely by the GM background
+      // script reacting to this metadata change — one writer, no duplicates.
+      await saveLoot(tokenId, loot);
+      statusEl.textContent = dirty
+        ? autosave ? "Editing…" : "Unsaved changes"
+        : "Saved ✓";
+    } catch (error) {
+      console.error("Master Loot: failed to save", error);
+      dirty = true;
+      statusEl.textContent = autosave
+        ? `Save failed, retrying: ${errorText(error)}`
+        : `Save failed: ${errorText(error)}`;
+      statusEl.title = String(error);
+      if (autosave) {
+        window.clearTimeout(idleTimer);
+        idleTimer = window.setTimeout(() => void saveNow(), AUTOSAVE_RETRY_MS);
+      }
+    } finally {
+      saving = null;
+    }
+  })();
+  await saving;
+  // Edits made while that save was in flight.
+  if (dirty && autosave && idleTimer === undefined) scheduleAutosave();
 }
 
 async function closeEditor(): Promise<void> {
+  if (dirty && autosave) {
+    // Flush pending edits instead of asking; only ask if that save failed.
+    await saveNow();
+  }
   if (
     dirty &&
     !window.confirm("You have unsaved changes. Close without saving?")
   ) {
     return;
   }
+  clearAutosaveTimers();
   dirty = false;
   await closeWindow(EDITOR_MODAL_ID);
 }
@@ -175,16 +252,38 @@ function buildShell(): void {
   statusEl = el("span", "status");
   statusEl.textContent = "";
 
-  const saveBtn = el("button", "btn btn-gold");
+  const saveBtn = el("button", autosave ? "btn" : "btn btn-gold");
   saveBtn.textContent = "Save";
+  saveBtn.title = "Save now (Ctrl+S)";
   saveBtn.onclick = () => void saveNow();
+
+  const autosaveSwitch = el("label", "switch");
+  autosaveSwitch.title = "Save automatically a moment after you stop typing";
+  const autosaveInput = el("input");
+  autosaveInput.type = "checkbox";
+  autosaveInput.checked = autosave;
+  const autosaveTrack = el("span", "track");
+  const autosaveText = el("span");
+  autosaveText.textContent = "Auto-save";
+  autosaveInput.onchange = () => {
+    autosave = autosaveInput.checked;
+    writeAutosavePref(autosave);
+    saveBtn.classList.toggle("btn-gold", !autosave);
+    if (autosave) {
+      if (dirty) void saveNow();
+    } else {
+      clearAutosaveTimers();
+      if (dirty && !saving) statusEl.textContent = "Unsaved changes";
+    }
+  };
+  autosaveSwitch.append(autosaveInput, autosaveTrack, autosaveText);
 
   const close = el("button", "btn-icon");
   close.textContent = "✕";
   close.ariaLabel = "Close";
   close.onclick = () => void closeEditor();
 
-  header.append(title, nameInput, enabledSwitch, statusEl, saveBtn, close);
+  header.append(title, nameInput, enabledSwitch, statusEl, autosaveSwitch, saveBtn, close);
 
   const main = el("div", "editor-main");
 
@@ -198,26 +297,46 @@ function buildShell(): void {
     event.preventDefault();
     if (draggedId) dropOnRoot(draggedId);
   };
+  // One uniform tile per kind of thing to add: icon over label, no single
+  // kind visually shouting louder than the others.
   const addRow = el("div", "add-row");
-  const addItem = el("button", "btn");
-  addItem.textContent = "+ Item";
-  addItem.onclick = () => addLootItem(createLootItem());
-  const addDoc = el("button", "btn btn-gold");
-  addDoc.textContent = "+ Document";
-  addDoc.onclick = () => addLootItem(createLootDocument());
-  const addNews = el("button", "btn btn-gold");
-  addNews.textContent = "+ Newspaper";
-  addNews.onclick = () => addLootItem(createLootDocument("newspaper"));
-  const addCoins = el("button", "btn");
-  addCoins.textContent = "+ Coins";
-  addCoins.onclick = () => addLootItem(createCurrencyItem());
-  const addIdCard = el("button", "btn");
-  addIdCard.textContent = "+ ID Card";
-  addIdCard.onclick = () => addLootItem(createIdCardItem());
-  const addFolderBtn = el("button", "btn");
-  addFolderBtn.textContent = "+ Folder";
+  // Heading row: the label, plus folders (which organise loot rather than
+  // being loot) as a quieter action on the right.
+  const addLabel = el("div", "add-label");
+  const addLabelText = el("span");
+  addLabelText.textContent = "Add to loot";
+  const addFolderBtn = el("button", "add-folder-link");
+  addFolderBtn.type = "button";
+  addFolderBtn.textContent = "📁 + Folder";
+  addFolderBtn.title = "Add a folder to group loot";
   addFolderBtn.onclick = () => addFolder();
-  addRow.append(addItem, addDoc, addNews, addCoins, addIdCard, addFolderBtn);
+  addLabel.append(addLabelText, addFolderBtn);
+  const addGrid = el("div", "add-grid");
+  const addTile = (icon: string, label: string, hint: string, onClick: () => void) => {
+    const tile = el("button", "add-tile");
+    tile.type = "button";
+    tile.title = hint;
+    const iconEl = el("span", "add-tile-icon");
+    iconEl.textContent = icon;
+    const labelEl = el("span", "add-tile-label");
+    labelEl.textContent = label;
+    tile.append(iconEl, labelEl);
+    tile.onclick = onClick;
+    addGrid.append(tile);
+  };
+  addTile("⚔️", "Item", "Add a weapon, armor or trinket", () => addLootItem(createLootItem()));
+  addTile("📜", "Document", "Add a letter, scroll, book or journal", () =>
+    addLootItem(createLootDocument()),
+  );
+  addTile("📰", "Newspaper", "Add a printed newspaper", () =>
+    addLootItem(createLootDocument("newspaper")),
+  );
+  addTile("🖼️", "Picture", "Add a picture from Owlbear with a description", () =>
+    addLootItem(createPictureItem()),
+  );
+  addTile("🪙", "Coins", "Add a pile of coins", () => addLootItem(createCurrencyItem()));
+  addTile("🪪", "ID Card", "Add an identity card", () => addLootItem(createIdCardItem()));
+  addRow.append(addLabel, addGrid);
   listPane.append(addRow, buildImportRow(), listEl);
 
   detailEl = el("div", "editor-detail");
@@ -446,6 +565,10 @@ function buildSlot(item: LootItem): HTMLElement {
     const who = item.profile?.name?.trim();
     sub.textContent = who ? `ID — ${who}` : "ID card";
     name.append(sub);
+  } else if (item.kind === "picture") {
+    const sub = el("span", "slot-sub");
+    sub.textContent = item.imageUrl?.trim() ? "Picture" : "Picture: none chosen yet";
+    name.append(sub);
   }
   const qty = el("span", "slot-qty");
   qty.textContent = item.quantity > 1 ? `×${item.quantity}` : "";
@@ -599,6 +722,8 @@ function renderDetail(): void {
     renderCurrencyDetail(item);
   } else if (item.kind === "idcard") {
     renderIdCardDetail(item);
+  } else if (item.kind === "picture") {
+    renderPictureDetail(item);
   } else {
     renderItemDetail(item);
   }
@@ -619,14 +744,11 @@ function renderDetail(): void {
 function commonFields(item: LootItem): HTMLElement {
   const row = el("div", "field-row");
 
-  const iconInput = el("input");
-  iconInput.value = item.icon;
-  iconInput.maxLength = 4;
-  iconInput.oninput = () => {
-    item.icon = iconInput.value;
+  const iconInput = createEmojiPicker(item.icon, (emoji) => {
+    item.icon = emoji;
     markDirty();
     renderList();
-  };
+  }).el;
 
   const qtyInput = el("input");
   qtyInput.type = "number";
@@ -653,7 +775,7 @@ function commonFields(item: LootItem): HTMLElement {
   };
 
   row.append(
-    field("Icon (emoji)", iconInput),
+    field("Icon", iconInput),
     field("Quantity", qtyInput),
     field("Rarity", raritySelect),
   );
@@ -683,14 +805,13 @@ function renderItemDetail(item: LootItem): void {
   descPreview.style.border = "1px solid var(--border-soft)";
   descPreview.style.borderRadius = "4px";
 
+  // Mirrors what players see when they open the item: picture, then text.
   const updateDescPreview = () => {
     descPreview.innerHTML = "";
-    if (item.description?.trim()) {
-      renderMarkdownInto(descPreview, item.description);
-      descPreview.style.display = "block";
-    } else {
-      descPreview.style.display = "none";
-    }
+    const picture = buildSlotPicture(item.imageUrl, item.name);
+    if (picture) descPreview.append(picture);
+    if (item.description?.trim()) renderMarkdownInto(descPreview, item.description);
+    descPreview.style.display = picture || item.description?.trim() ? "block" : "none";
   };
 
   descInput.oninput = () => {
@@ -700,6 +821,7 @@ function renderItemDetail(item: LootItem): void {
   };
   updateDescPreview();
 
+  detailEl.append(field("Picture (optional)", imageSourceControl(item, updateDescPreview)));
   descWrap.append(descInput, descPreview);
   detailEl.append(field("Description (Markdown supported)", descWrap));
 
@@ -711,6 +833,87 @@ function renderItemDetail(item: LootItem): void {
     markDirty();
   };
   detailEl.append(field("Link (optional)", linkInput));
+}
+
+/**
+ * Image chooser for an item: pick one of the GM’s Owlbear uploads, or
+ * paste any direct link. Writes item.imageUrl; `onChange` refreshes previews.
+ */
+function imageSourceControl(item: LootItem, onChange: () => void): HTMLElement {
+  const row = el("div", "picture-source");
+  const pickBtn = el("button", "btn btn-gold");
+  pickBtn.type = "button";
+  pickBtn.textContent = "🦉 Choose from Owlbear";
+  pickBtn.title = "Pick one of your Owlbear uploads";
+  const urlInput = el("input");
+  urlInput.value = item.imageUrl ?? "";
+  urlInput.placeholder = "…or paste a direct image link";
+  const clearBtn = el("button", "btn-icon");
+  clearBtn.type = "button";
+  clearBtn.textContent = "✕";
+  clearBtn.title = "Remove the picture";
+  clearBtn.ariaLabel = "Remove the picture";
+  const setUrl = (url: string) => {
+    item.imageUrl = url || undefined;
+    clearBtn.hidden = !url;
+    markDirty();
+    onChange();
+    renderList();
+  };
+  clearBtn.hidden = !item.imageUrl;
+  urlInput.oninput = () => setUrl(urlInput.value.trim());
+  clearBtn.onclick = () => {
+    urlInput.value = "";
+    setUrl("");
+  };
+  pickBtn.onclick = () => {
+    void pickOwlbearImages().then(([picked]) => {
+      if (!picked) return;
+      urlInput.value = picked.url;
+      setUrl(picked.url);
+    });
+  };
+  row.append(pickBtn, urlInput, clearBtn);
+  return row;
+}
+
+/**
+ * Picture detail: an image chosen from the GM's Owlbear uploads (or any
+ * direct link) plus a Markdown description, over a live preview of exactly
+ * what players will see.
+ */
+function renderPictureDetail(item: LootItem): void {
+  const nameInput = el("input");
+  nameInput.value = item.name;
+  nameInput.oninput = () => {
+    item.name = nameInput.value;
+    markDirty();
+    renderList();
+  };
+  detailEl.append(field("Name", nameInput), commonFields(item));
+
+  const wrap = el("div", "preview-wrap");
+  const stage = el("div", "paper-stage");
+  stage.style.setProperty("--zoom", "0.7");
+  wrap.append(stage);
+  const refreshPreview = () => renderPicture(stage, item);
+
+  detailEl.append(field("Image", imageSourceControl(item, refreshPreview)));
+
+  const descInput = el("textarea");
+  descInput.value = item.description ?? "";
+  descInput.rows = 5;
+  descInput.placeholder =
+    "Shown under the picture. Markdown supported (**bold**, *italic*, lists…).";
+  descInput.oninput = () => {
+    item.description = descInput.value;
+    markDirty();
+    refreshPreview();
+  };
+  detailEl.append(field("Description (optional)", descInput));
+
+  refreshPreview();
+  detailEl.append(wrap);
 }
 
 /** Currency detail: explicit coin counts + a live value converter. */
@@ -725,19 +928,16 @@ function renderCurrencyDetail(item: LootItem): void {
     renderList();
   };
 
-  const iconInput = el("input");
-  iconInput.value = item.icon;
-  iconInput.maxLength = 4;
-  iconInput.oninput = () => {
-    item.icon = iconInput.value;
+  const iconInput = createEmojiPicker(item.icon, (emoji) => {
+    item.icon = emoji;
     markDirty();
     renderList();
-  };
+  }).el;
 
   // Quantity is meaningless here — the coin counts *are* the amounts — and
   // rarity glow on a coin pouch reads as a magic item, so neither is shown.
   const topRow = el("div", "field-row");
-  topRow.append(field("Name", nameInput), field("Icon (emoji)", iconInput));
+  topRow.append(field("Name", nameInput), field("Icon", iconInput));
   detailEl.append(topRow);
 
   const converter = buildCoinConverter(() => coins);
@@ -784,14 +984,11 @@ function renderIdCardDetail(item: LootItem): void {
     renderList();
   };
 
-  const iconInput = el("input");
-  iconInput.value = item.icon;
-  iconInput.maxLength = 4;
-  iconInput.oninput = () => {
-    item.icon = iconInput.value;
+  const iconInput = createEmojiPicker(item.icon, (emoji) => {
+    item.icon = emoji;
     markDirty();
     renderList();
-  };
+  }).el;
 
   // A card is a single object, so no quantity; rarity still tints the slot.
   const raritySelect = el("select");
@@ -811,7 +1008,7 @@ function renderIdCardDetail(item: LootItem): void {
   const topRow = el("div", "field-row");
   topRow.append(
     field("Name", nameInput),
-    field("Icon (emoji)", iconInput),
+    field("Icon", iconInput),
     field("Rarity", raritySelect),
   );
   detailEl.append(topRow);
@@ -905,10 +1102,55 @@ function renderIdCardDetail(item: LootItem): void {
 }
 
 
+/** "How to add a picture" box shown first in the formatting guide. */
+function buildPictureHelp(isNewspaper: boolean): HTMLElement {
+  const box = el("div", "doc-picture-help");
+  const heading = el("div", "doc-picture-help-title");
+  heading.textContent = "🖼 Adding pictures";
+  const intro = el("p", "doc-picture-help-text");
+  intro.textContent =
+    "Click 🦉 From Owlbear to pick one of your Owlbear uploads, or paste an " +
+    "image link (Imgur, Google Drive, Dropbox or any direct link) inside ![ ]( ). " +
+    "The picture appears exactly where you write it.";
+  box.append(heading, intro);
+
+  const example = (code: string, meaning: string) => {
+    const row = el("div", "doc-picture-help-row");
+    const codeEl = el("code", "doc-syntax-code");
+    codeEl.textContent = code;
+    const meaningEl = el("span", "doc-syntax-desc");
+    meaningEl.textContent = meaning;
+    row.append(codeEl, meaningEl);
+    box.append(row);
+  };
+
+  if (isNewspaper) {
+    example("![Caption](link)", "Picture at this point in the story, with a caption");
+    example("![Caption|page](link)", "Spans the whole page width");
+    example("![Caption|column](link)", "Stays inside its reading column");
+    example("![Caption|engraving](link)", "Print look: halftone, engraving, sepia, color-press or raw");
+  } else {
+    example("![Caption](link)", "On its own line: large and centered, caption underneath");
+    example("![|left](link) Your text…", "Inside a sentence: small, text wraps around it");
+    example("![Caption|right|medium](link)", "Place: left, right, center. Size: small, medium, large, full");
+    example("![Caption|photo](link)", "Look: ink (printed on the paper), photo (taped-in), plain");
+    example("![Caption|60%](link)", "Exact width: 60% of the text width (5–100%), bigger or smaller than the sizes");
+    example("![Caption|fit](link)", "Shrink to fit: the whole picture always fits on one page");
+    example("![|page](link)", "Full page: the picture replaces a whole page (add |fit to avoid cropping)");
+  }
+
+  const tip = el("p", "doc-picture-help-text");
+  tip.textContent =
+    "The caption is optional; settings go after | in any order. " +
+    "Check the result in the Style tab preview.";
+  box.append(tip);
+  return box;
+}
+
 function buildDocumentSyntaxGuide(
   contentInput: HTMLTextAreaElement,
   isNewspaper: boolean,
-): HTMLElement {
+): { guide: HTMLElement; toolbar: HTMLElement } {
   const details = el("details", "doc-syntax-guide");
   if (isNewspaper) {
     details.setAttribute("open", "");
@@ -925,9 +1167,11 @@ function buildDocumentSyntaxGuide(
   details.append(summary);
 
   const body = el("div", "doc-syntax-body");
+  body.append(buildPictureHelp(isNewspaper));
 
-  // Quick-insert toolbar
-  const toolbar = el("div", "doc-syntax-toolbar");
+  // Quick-insert toolbar: kept outside the collapsible guide so it is
+  // always visible right above the content box.
+  const toolbar = el("div", "doc-syntax-toolbar doc-quick-insert");
   const toolbarLabel = el("span", "doc-syntax-toolbar-label");
   toolbarLabel.textContent = "Quick Insert:";
   toolbar.append(toolbarLabel);
@@ -957,6 +1201,17 @@ function buildDocumentSyntaxGuide(
     };
     return chip;
   };
+
+  // Pick one of the user's Owlbear uploads; only its link lands in the text.
+  const owlbearChip = createChip('🦉 From Owlbear', 'Insert a picture you uploaded to Owlbear', () => {
+    void pickOwlbearImages().then(([picked]) => {
+      if (!picked) return;
+      // No caption: the upload's file name is private to the GM.
+      insertSnippet('\n![', `](${picked.url})\n`);
+    });
+  });
+  owlbearChip.classList.add("doc-syntax-chip-accent");
+  toolbar.append(owlbearChip);
 
   if (isNewspaper) {
     toolbar.append(
@@ -1014,6 +1269,12 @@ function buildDocumentSyntaxGuide(
       createChip('- List', 'Bullet list item', () =>
         insertSnippet('\n- ', '\n', 'List item')
       ),
+      createChip('🖼 Picture', 'Picture on its own line, centered', () =>
+        insertSnippet('\n![Caption](', ')\n', 'https://i.imgur.com/…')
+      ),
+      createChip('🖼 In text', 'Small picture the text wraps around', () =>
+        insertSnippet('![Caption|left](', ') ', 'https://i.imgur.com/…')
+      ),
       createChip('--- Page', 'Start a new page', () =>
         insertSnippet('\n\n---\n\n', '', '')
       ),
@@ -1023,7 +1284,6 @@ function buildDocumentSyntaxGuide(
     );
   }
 
-  body.append(toolbar);
 
   // Cheat sheet table
   const table = el("div", "doc-syntax-grid");
@@ -1066,11 +1326,18 @@ function buildDocumentSyntaxGuide(
     addRow('---', 'Page break (in Pages mode) or divider line', '---');
     addRow('{@dice 1d20+3}', 'Interactive rollable dice tag', '{@dice 2d6+4 fire}');
     addRow('[Link](url)', 'Clickable player hyperlink', '[Map](https://...)');
+    addRow('![Caption](url)', 'Picture on its own line: large and centered', '![The old mill](https://...)');
+    addRow('![Caption|left](url) text', 'Picture inside a sentence: text wraps around it (left or right)', '![Her|left](https://...) She told me…');
+    addRow('|small |medium |large |full', 'Picture size (add after the caption)', '![Map|right|medium](https://...)');
+    addRow('|ink |photo |plain', 'Drawn onto the paper, taped-in photo, or original colors', '![Portrait|photo](https://...)');
+    addRow('|NN%', 'Exact width as % of the text width (like LaTeX width=0.6\\textwidth)', '![Map|60%](https://...)');
+    addRow('|fit', 'Scale down, keeping proportions, until it fits on one page', '![Poster|100%|fit](https://...)');
+    addRow('|page', 'Picture is a page of its own and fills it (Paged layout); |page|fit shows it uncropped', '![|page](https://...)');
   }
 
   body.append(table);
   details.append(body);
-  return details;
+  return { guide: details, toolbar };
 }
 
 function renderDocumentDetail(item: LootItem): void {
@@ -1090,7 +1357,12 @@ function renderDocumentDetail(item: LootItem): void {
     detailTab = "style";
     renderDetail();
   };
-  tabs.append(writeTab, styleTab);
+  const previewBtn = el("button", "btn tab tab-preview");
+  previewBtn.type = "button";
+  previewBtn.textContent = "👁 Preview";
+  previewBtn.title = "Quick preview, as players will see it (Ctrl+P)";
+  previewBtn.onclick = () => openQuickPreview();
+  tabs.append(writeTab, styleTab, previewBtn);
   detailEl.append(tabs);
 
   if (detailTab === "style") {
@@ -1149,6 +1421,7 @@ function renderDocumentDetail(item: LootItem): void {
     : "Write the letter, page or diary entry here.\n\n" +
       "Blank lines start a new paragraph.\n" +
       "A line with only --- starts a new page.\n" +
+      "![Caption|left](image link) puts a picture right there in the text.\n" +
       "*A paragraph in asterisks* becomes an editor's note " +
       "(not in the document's handwriting).";
 
@@ -1161,8 +1434,8 @@ function renderDocumentDetail(item: LootItem): void {
     updateCounter();
     markDirty();
   };
-  const syntaxGuide = buildDocumentSyntaxGuide(contentInput, isNewspaper);
-  detailEl.append(syntaxGuide, field("Content", contentInput), counter);
+  const { guide, toolbar } = buildDocumentSyntaxGuide(contentInput, isNewspaper);
+  detailEl.append(guide, toolbar, field("Content", contentInput), counter);
 }
 
 /** Style tab: paper style / condition / font pickers over a live preview. */
@@ -1340,12 +1613,76 @@ window.addEventListener("pagehide", () => {
   if (dirty) void saveNow();
 });
 
+// --- quick preview -------------------------------------------------------------
+
+/*
+ * Ctrl+P / 👁 Preview: the players’ document reader itself (same component,
+ * same zoom and text size preferences), laid over the editor and fed the
+ * item being edited, unsaved changes included. Esc, Ctrl+P or ✕ close it.
+ */
+let quickPreview: {
+  el: HTMLElement;
+  reader: DocumentReader;
+  returnFocus: Element | null;
+} | null = null;
+
+function openQuickPreview(): void {
+  // The shell may have been rebuilt underneath an open preview.
+  if (quickPreview && !quickPreview.el.isConnected) quickPreview = null;
+  const item = selected();
+  if (!item || (!item.document && item.kind !== "picture") || quickPreview) return;
+
+  const overlay = el("div", "quick-preview");
+  overlay.tabIndex = -1;
+  overlay.setAttribute("role", "dialog");
+  overlay.ariaLabel = "Document preview";
+  overlay.title = "Preview: exactly what players see · Esc or Ctrl+P to close";
+
+  const reader = createDocumentReader({ onClose: () => closeQuickPreview() });
+  overlay.append(reader.el);
+  app.append(overlay);
+  reader.show(item);
+
+  quickPreview = { el: overlay, reader, returnFocus: document.activeElement };
+  overlay.focus();
+}
+
+function closeQuickPreview(): void {
+  if (!quickPreview) return;
+  const { el: overlay, returnFocus } = quickPreview;
+  overlay.remove();
+  quickPreview = null;
+  // Back to the textarea with the cursor where it was.
+  if (returnFocus instanceof HTMLElement) returnFocus.focus();
+}
+
 document.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod && event.key.toLowerCase() === "s") {
     event.preventDefault();
     void saveNow();
+    return;
   }
-});
+  if (mod && event.key.toLowerCase() === "p") {
+    // Replaces the browser's print dialog inside the editor.
+    event.preventDefault();
+    if (quickPreview) closeQuickPreview();
+    else openQuickPreview();
+    return;
+  }
+  if (!quickPreview) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeQuickPreview();
+  } else if (event.key === "ArrowRight" || event.key === "PageDown") {
+    event.preventDefault();
+    quickPreview.reader.next();
+  } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
+    event.preventDefault();
+    quickPreview.reader.prev();
+  }
+}, true);
 
 // --- init --------------------------------------------------------------------
 

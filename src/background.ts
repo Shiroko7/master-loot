@@ -1,6 +1,7 @@
-import OBR from "@owlbear-rodeo/sdk";
+import OBR, { type Image } from "@owlbear-rodeo/sdk";
 import { CTX_EDIT_ID } from "./constants";
 import {
+  BADGE_DPI,
   badgePosition,
   getBadgeCorner,
   getLoot,
@@ -87,6 +88,9 @@ function requestCleanup(): void {
         cleanupQueued = false;
         await cleanupPass();
       } while (cleanupQueued);
+    } catch (error) {
+      // Surface it: a silent failure here means lootable tokens get no bag.
+      console.error("Master Loot: could not update loot bags/sparkles", error);
     } finally {
       cleanupRunning = false;
     }
@@ -143,8 +147,27 @@ async function cleanupPass(): Promise<void> {
       getLoot(item)?.enabled === true &&
       (!badgedOwners.has(item.id) || !sparkledOwners.has(item.id)),
   );
+  // One token failing (e.g. its sparkle) must not stop the others' bags.
   for (const token of missing) {
-    await syncBadge(token.id, true);
+    try {
+      await syncBadge(token.id, true);
+    } catch (error) {
+      console.error(`Master Loot: could not add the loot bag to "${token.name}"`, error);
+    }
+  }
+
+  // Resize badges made by older versions (larger) to the current size.
+  const resize = items.filter(
+    (item) => isBadge(item) && !removed.has(item.id) && (item as Image).grid?.dpi !== BADGE_DPI,
+  );
+  if (resize.length > 0) {
+    await OBR.scene.items.updateItems(resize.map((b) => b.id), (updates) => {
+      for (const item of updates) {
+        const badge = item as Image;
+        badge.grid.dpi = BADGE_DPI;
+        badge.grid.offset = { x: badge.image.width / 2, y: badge.image.height / 2 };
+      }
+    });
   }
 
   // Snap surviving badges into the configured corner (covers resized
@@ -172,10 +195,15 @@ async function cleanupPass(): Promise<void> {
 }
 
 OBR.onReady(async () => {
-  TransferManager.initialize();
-  NetworkProtocol.initialize();
+  // Loot bags and the GM menu first: they must never wait on (or be
+  // blocked by) the inventory sync below, which talks to other players.
+  void setupLootContextMenu();
+  watchBadgeClicks();
+  watchSceneForCleanup();
 
   try {
+    TransferManager.initialize();
+    NetworkProtocol.initialize();
     const myId = await OBR.player.getId();
     const myName = await OBR.player.getName();
     const myInv = LocalStorageAdapter.getInventory(myId);
@@ -183,8 +211,4 @@ OBR.onReady(async () => {
   } catch (err) {
     console.warn("Master Loot: background inventory initial sync failed", err);
   }
-
-  void setupLootContextMenu();
-  watchBadgeClicks();
-  watchSceneForCleanup();
 });

@@ -106,7 +106,7 @@ export function renderInlineMarkdown(text: string): DocumentFragment {
   // 12, 13: italic *...* or _..._
   // 14: tag type, 15: tag value {@tag value}
   const tokenRegex =
-    /`([^`]+)`|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|\*\*\*([^*]+)\*\*\*|___([^_]+)___|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|==([^=\n]+)==|\*([^*\n]+)\*|_([^_\n]+)_|\{@([a-zA-Z]+)\s+([^}]+)\}/g;
+    /`([^`]+)`|!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))+)\)|\[([^\]]+)\]\(([^)]+)\)|\*\*\*([^*]+)\*\*\*|___([^_]+)___|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|==([^=\n]+)==|\*([^*\n]+)\*|_([^_\n]+)_|\{@([a-zA-Z]+)\s+([^}]+)\}/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -125,24 +125,9 @@ export function renderInlineMarkdown(text: string): DocumentFragment {
       code.textContent = match[1];
       frag.append(code);
     }
-    // 2 & 3: Image ![alt](url)
+    // 2 & 3: Image ![caption|options](url)
     else if (match[3] !== undefined) {
-      const alt = match[2] || "";
-      const url = match[3] || "";
-      if (isSafeUrl(url)) {
-        const img = document.createElement("img");
-        img.className = "md-inline-img";
-        img.referrerPolicy = "no-referrer";
-        if (typeof img.setAttribute === "function") {
-          img.setAttribute("referrerpolicy", "no-referrer");
-        }
-        img.src = normalizeImageUrl(url.trim());
-        img.alt = alt;
-        img.loading = "lazy";
-        frag.append(img);
-      } else {
-        frag.append(document.createTextNode(`[Image: ${alt}]`));
-      }
+      frag.append(createFigure(match[2] || "", match[3] || "", "inline"));
     }
     // 4 & 5: Link [text](url)
     else if (match[5] !== undefined) {
@@ -215,6 +200,167 @@ export function renderInlineMarkdown(text: string): DocumentFragment {
 
   return frag;
 }
+
+export type FigurePlacement = "left" | "right" | "center";
+export type FigureSize = "small" | "medium" | "large" | "full";
+export type FigureLook = "ink" | "photo" | "plain";
+
+export interface FigureSpec {
+  caption: string;
+  placement: FigurePlacement;
+  size: FigureSize;
+  look: FigureLook;
+  /**
+   * `|60%`: exact width as a share of the text width, like LaTeX's
+   * `width=0.6\textwidth`. Overrides `size`, and may enlarge a picture
+   * past the size keywords' height caps.
+   */
+  widthPercent?: number;
+  /** `|fit`: scale down, keeping proportions, until it fits one page. */
+  fit: boolean;
+  /**
+   * `|page`: the picture is a page of its own and fills all of it (cropping
+   * the edges if the proportions differ; with `|fit` it shows whole instead).
+   */
+  page: boolean;
+}
+
+const PLACEMENTS: readonly string[] = ["left", "right", "center"];
+const SIZES: readonly string[] = ["small", "medium", "large", "full"];
+const LOOK_ALIASES: Record<string, FigureLook> = {
+  ink: "ink",
+  sepia: "ink",
+  engraving: "ink",
+  sketch: "ink",
+  photo: "photo",
+  polaroid: "photo",
+  plain: "plain",
+  raw: "plain",
+};
+
+/**
+ * Parses the `caption|option|option` part of `![...](url)`. Options come in
+ * any order: placement (left/right/center), size (small/medium/large/full)
+ * and look (ink/photo/plain). Unknown words stay part of the caption.
+ *
+ * A standalone picture (alone on its line) defaults to a large centered
+ * plate; one written inside a sentence defaults to a small picture floated
+ * left so the text wraps around it.
+ */
+export function parseFigureSpec(alt: string, standalone: boolean): FigureSpec {
+  const spec: FigureSpec = {
+    caption: "",
+    placement: standalone ? "center" : "left",
+    size: standalone ? "large" : "small",
+    look: "ink",
+    fit: false,
+    page: false,
+  };
+  const [first, ...options] = alt.split("|");
+  const captionParts = [first];
+  let sizeSet = false;
+  for (const option of options) {
+    const word = option.trim().toLowerCase();
+    if (PLACEMENTS.includes(word)) {
+      spec.placement = word as FigurePlacement;
+    } else if (SIZES.includes(word)) {
+      spec.size = word as FigureSize;
+      sizeSet = true;
+    } else if (word in LOOK_ALIASES) {
+      spec.look = LOOK_ALIASES[word];
+    } else if (word === "fit") {
+      spec.fit = true;
+    } else if (word === "page") {
+      spec.page = true;
+    } else if (/^\d{1,3}(?:\.\d+)?\s*%$/.test(word)) {
+      spec.widthPercent = Math.min(100, Math.max(5, parseFloat(word)));
+      sizeSet = true;
+    } else if (word) {
+      captionParts.push(option);
+    }
+  }
+  // A centered picture inside a sentence reads best a bit bigger than a
+  // margin sketch; a floated one can never take the full width.
+  if (!sizeSet && !standalone && spec.placement === "center") spec.size = "medium";
+  if (spec.placement !== "center" && spec.size === "full") spec.size = "large";
+  // A full-page picture is never floated or narrowed.
+  if (spec.page) {
+    spec.placement = "center";
+    spec.size = "full";
+    spec.widthPercent = undefined;
+  }
+  spec.caption = captionParts.join("|").trim();
+  return spec;
+}
+
+/**
+ * Builds a picture that sits in the text exactly where it was written.
+ * Inline figures are spans (valid inside a paragraph); standalone ones are
+ * real <figure> blocks. Never uses innerHTML.
+ */
+export function createFigure(
+  alt: string,
+  rawUrl: string,
+  mode: "inline" | "block",
+): HTMLElement {
+  const spec = parseFigureSpec(alt, mode === "block");
+  const url = rawUrl.trim();
+  const wrap = document.createElement(mode === "block" ? "figure" : "span");
+  wrap.className = `md-figure md-figure-${spec.placement} md-figure-${spec.size} md-look-${spec.look}`;
+  if (spec.widthPercent !== undefined) {
+    wrap.classList.add("md-figure-custom");
+    wrap.style.width = `${spec.widthPercent}%`;
+  }
+  if (spec.fit) wrap.classList.add("md-figure-fit");
+  if (spec.page) wrap.classList.add("md-figure-page");
+
+  const frame = document.createElement("span");
+  frame.className = "md-figure-frame";
+  if (isSafeUrl(url)) {
+    const img = document.createElement("img");
+    img.className = "md-inline-img";
+    img.referrerPolicy = "no-referrer";
+    if (typeof img.setAttribute === "function") {
+      img.setAttribute("referrerpolicy", "no-referrer");
+    }
+    img.src = normalizeImageUrl(url);
+    img.alt = spec.caption;
+    // Lets CSS shrink the frame to the picture's proportions when a height
+    // cap applies, instead of letterboxing it inside a full-width frame.
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        wrap.style.setProperty("--ratio", (img.naturalWidth / img.naturalHeight).toFixed(4));
+      }
+    };
+    img.onerror = () => {
+      wrap.classList.add("md-figure-broken");
+      frame.textContent = isImgurAlbumUrl(url)
+        ? "Picture unavailable: Imgur album links can't be embedded. Use the image's own link."
+        : "Picture unavailable";
+    };
+    frame.append(img);
+  } else {
+    wrap.classList.add("md-figure-broken");
+    frame.textContent = "Picture unavailable";
+  }
+  wrap.append(frame);
+
+  if (spec.caption) {
+    const caption = document.createElement(mode === "block" ? "figcaption" : "span");
+    caption.className = "md-figure-caption";
+    caption.append(renderInlineMarkdown(spec.caption));
+    // A full-page picture carries its caption inside the frame so it can
+    // sit over the picture instead of spilling onto the next page.
+    (spec.page ? frame : wrap).append(caption);
+  }
+  return wrap;
+}
+
+/**
+ * A line holding nothing but one `![...](url)` picture. URLs may contain one
+ * level of balanced parentheses (Wikipedia links, `url(#id)` in SVG data).
+ */
+const STANDALONE_IMAGE = /^!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))+)\)$/;
 
 function parseMarkdownTable(lines: string[]): HTMLElement | null {
   if (lines.length < 2) return null;
@@ -419,7 +565,15 @@ export function renderMarkdownInto(
       continue;
     }
 
-    // 8. Editorial note (*wrapped entirely in asterisks*)
+    // 8. Standalone picture: a line holding only ![caption|options](url)
+    const imageMatch = STANDALONE_IMAGE.exec(trimmed);
+    if (imageMatch) {
+      target.append(createFigure(imageMatch[1], imageMatch[2], "block"));
+      i++;
+      continue;
+    }
+
+    // 9. Editorial note (*wrapped entirely in asterisks*)
     const noteMatch = NOTE_REGEX.exec(trimmed);
     if (noteMatch) {
       const noteP = document.createElement("p");
@@ -430,7 +584,7 @@ export function renderMarkdownInto(
       continue;
     }
 
-    // 9. Paragraph
+    // 10. Paragraph
     const paragraphLines: string[] = [];
     while (
       i < rawLines.length &&
@@ -441,7 +595,8 @@ export function renderMarkdownInto(
       !rawLines[i].trim().startsWith(">") &&
       !/^[-*+]\s+/.test(rawLines[i].trim()) &&
       !/^\d+\.\s+/.test(rawLines[i].trim()) &&
-      !rawLines[i].trim().startsWith("|")
+      !rawLines[i].trim().startsWith("|") &&
+      !STANDALONE_IMAGE.test(rawLines[i].trim())
     ) {
       paragraphLines.push(rawLines[i]);
       i++;

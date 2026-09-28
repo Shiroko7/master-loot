@@ -866,3 +866,22 @@ test("WindowResizer: getSavedWindowSize and saveWindowSize persist window sizes"
 });
 
 
+
+test("UserInventoryModel: a picture keeps its image and description through take/return", () => {
+  const picture: LootItem = {
+    id: "pic-1",
+    kind: "picture",
+    name: "Harbour at dawn",
+    quantity: 1,
+    rarity: "none",
+    icon: "🖼️",
+    imageUrl: "https://images.owlbear.rodeo/abc/items/def.webp",
+    description: "Drawn by **Mara**.",
+  };
+  const inv = lootItemToUserInventoryItem(picture);
+  assert.equal(inv.section, "Documents & Lore");
+  const back = userInventoryItemToLootItem(inv);
+  assert.equal(back.kind, "picture");
+  assert.equal(back.imageUrl, picture.imageUrl);
+  assert.equal(back.description, picture.description);
+});

@@ -82,7 +82,7 @@ function inferredCurrencyKind(item: UserInventoryItem): CoinKind | undefined {
 
 export function defaultInventorySectionForKind(kind?: string): string {
   if (kind === "currency") return CURRENCY_INVENTORY_SECTION;
-  if (kind === "document" || kind === "idcard") return DOCUMENTS_INVENTORY_SECTION;
+  if (kind === "document" || kind === "idcard" || kind === "picture") return DOCUMENTS_INVENTORY_SECTION;
   return OTHER_INVENTORY_SECTION;
 }
 
@@ -269,6 +269,7 @@ export function lootItemToUserInventoryItem(lootItem: LootItem): UserInventoryIt
       document: lootItem.document,
       coins,
       profile: lootItem.profile,
+      imageUrl: lootItem.imageUrl,
     },
   };
 }
@@ -296,6 +297,7 @@ export function userInventoryItemToLootItem(invItem: UserInventoryItem): LootIte
       ? currencyPurseForInventoryItem(invItem)
       : data.coins,
     profile: data.profile,
+    imageUrl: data.imageUrl,
     tags: invItem.tags || data.tags,
     data: {
       ...data,

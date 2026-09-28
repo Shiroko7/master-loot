@@ -18,6 +18,8 @@ import { NetworkProtocol, type SocketMessage } from "./NetworkProtocol";
 import { getLoot, openLootLogModal, openUserDocumentModal } from "../loot";
 import { buildCoinChips, buildCoinConverter } from "../coins";
 import { renderMarkdownInto } from "../markdown";
+import { buildSlotPicture } from "../pictureView";
+import { createEmojiPicker } from "../emojiPicker";
 
 const app = document.getElementById("app")!;
 
@@ -32,10 +34,6 @@ const collapsedSections = new Set<string>();
 
 let searchQuery = "";
 let activeTagFilter: string | null = null;
-
-const COMMON_EMOJIS = [
-  "⚔️", "🛡️", "🏹", "🪄", "🧪", "📜", "💎", "💍", "👑", "🗝️", "💰", "📦", "🎒", "🥩", "🍺", "🕯️", "🪓", "🔨"
-];
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -107,25 +105,12 @@ function promptCreateOrEditItem(existingItem?: UserInventoryItem, defaultSection
   nameLabel.append(nameSpan, nameInput);
 
   // Icon / Emoji
-  const iconLabel = el("label", "field");
+  const iconLabel = el("div", "field");
   const iconSpan = el("span");
-  iconSpan.textContent = "Icon / Emoji:";
-  const iconInput = el("input");
-  iconInput.type = "text";
-  iconInput.value = existingItem?.img || "⚔️";
-  iconInput.style.maxWidth = "80px";
-
-  const emojiBar = el("div", "emoji-suggestions");
-  for (const emoji of COMMON_EMOJIS) {
-    const btn = el("button", "emoji-btn");
-    btn.type = "button";
-    btn.textContent = emoji;
-    btn.onclick = () => {
-      iconInput.value = emoji;
-    };
-    emojiBar.append(btn);
-  }
-  iconLabel.append(iconSpan, iconInput, emojiBar);
+  iconSpan.textContent = "Icon:";
+  // Read back on save via iconInput.value.
+  const iconInput = createEmojiPicker(existingItem?.img || "⚔️", () => {});
+  iconLabel.append(iconSpan, iconInput.el);
 
   // Quantity
   const qtyLabel = el("label", "field");
@@ -653,6 +638,10 @@ function renderItemSlot(
     const sub = el("span", "slot-sub");
     sub.textContent = "Click to inspect";
     nameWrapper.append(sub);
+  } else if (item.data?.kind === "picture") {
+    const sub = el("span", "slot-sub");
+    sub.textContent = "Click to view";
+    nameWrapper.append(sub);
   }
 
   const controls = el("div", "slot-controls");
@@ -698,12 +687,9 @@ function renderItemSlot(
   slot.append(icon, nameWrapper, controls);
 
   slot.onclick = () => {
-    if (item.data?.kind === "document") {
+    const kind = item.data?.kind;
+    if (kind === "document" || kind === "picture" || kind === "idcard") {
       void openUserDocumentModal(activeUserId, item.id);
-      return;
-    }
-    if (item.data?.kind === "idcard") {
-      void openUserDocumentModal(activeUserId, item.id, { width: 720, height: 600 });
       return;
     }
 
@@ -721,6 +707,10 @@ function renderItemSlot(
 
   // Expanded panel
   const panel = el("div", "coin-panel");
+  const picture = buildSlotPicture(item.data?.imageUrl, item.name, () =>
+    void openUserDocumentModal(activeUserId, item.id),
+  );
+  if (picture) panel.append(picture);
   if (item.data?.description) {
     const desc = el("div", "slot-desc");
     renderMarkdownInto(desc, item.data.description);

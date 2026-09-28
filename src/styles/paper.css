@@ -15,10 +15,19 @@
 }
 
 .paper {
+  /*
+   * Page margins, in paper em (unitless so they can also be turned into
+   * container units for full-bleed pictures). Pagination derives its column
+   * geometry from --pad-x, and paperRender.ts reads the resulting sizes back.
+   */
+  --pad-top: 2.6;
+  --pad-x: 2.8;
+  --pad-bottom: 3.4;
   font-size: calc(16px * var(--zoom, 1));
   width: 38em;
   flex-shrink: 0;
-  padding: 3.2em 3.6em 4.2em;
+  padding: calc(var(--pad-top) * 1em) calc(var(--pad-x) * 1em)
+    calc(var(--pad-bottom) * 1em);
   position: relative;
   color: #2c2418;
   box-shadow:
@@ -58,6 +67,24 @@
 
 .paper-body p {
   margin: 0 0 0.9em;
+}
+
+/*
+ * Ink brush: near-black sumi ink that bleeds a little into the fibers —
+ * a tight dark halo plus a faint wider wash around each stroke.
+ */
+.paper[data-font="kaushan-script"] .paper-title,
+.paper[data-font="kaushan-script"] .paper-body {
+  color: #1a130c;
+  text-shadow:
+    0 0 0.03em rgba(20, 12, 5, 0.45),
+    0 0 0.12em rgba(40, 25, 10, 0.12);
+}
+
+.paper[data-font="kaushan-script"] .paper-body {
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+  word-spacing: 0.06em;
 }
 
 /*
@@ -191,6 +218,283 @@
   color: #0c2d4f;
 }
 
+/*
+ * Pictures: `![caption|options](url)` sits exactly where it was written.
+ * Alone on a line it is a centered plate; inside a sentence it floats so the
+ * words wrap around it. The frame is never positioned above the paper's
+ * fiber (.paper::after) or condition overlay (.paper-texture), so stains,
+ * creases and grain paint over the picture just like over the ink.
+ */
+.md-figure img {
+  max-width: 100%;
+}
+
+.paper-body .md-figure {
+  display: block;
+  margin: 0.4em auto 1em;
+  break-inside: avoid;
+  text-align: center;
+  font-style: normal;
+  text-indent: 0;
+}
+
+.paper-body .md-figure-small { width: 38%; }
+.paper-body .md-figure-medium { width: 58%; }
+.paper-body .md-figure-large { width: 80%; }
+.paper-body .md-figure-full { width: 100%; }
+
+.paper-body .md-figure-left {
+  float: left;
+  margin: 0.25em 1.1em 0.6em 0;
+}
+
+.paper-body .md-figure-right {
+  float: right;
+  margin: 0.25em 0 0.6em 1.1em;
+}
+
+/* Keep a floated picture from dangling into the next section. */
+.paper-body .md-heading,
+.paper-body .md-hr,
+.paper-body .page-break,
+.paper-body .text-divider,
+.paper-body figure.md-figure {
+  clear: both;
+}
+
+/*
+ * Sizing. The figure's width comes from its size keyword or `|NN%`; the
+ * picture then shrinks, keeping its proportions, if it would be taller than
+ * --img-max-h. The frame narrows to match (via --ratio, set once the image
+ * loads) so photo borders and ink edges hug the picture itself.
+ *
+ *   keyword sizes   capped at 26em (pages mode: 60% of a page)
+ *   |NN%            exact width, only capped by the page height
+ *   |fit            as big as allowed, but always entirely on one page
+ *
+ * --page-px is the real page height, measured by the renderer.
+ */
+.paper-body .md-figure {
+  --img-max-h: 26em;
+}
+
+.paper-body .md-figure-custom {
+  --img-max-h: 200em;
+}
+
+.paper-body .md-figure-fit {
+  --img-max-h: 80vh;
+}
+
+.paper-paged .paper-body .md-figure {
+  --img-max-h: calc(var(--page-px, 30em) * 0.6);
+}
+
+.paper-paged .paper-body .md-figure-custom,
+.paper-paged .paper-body .md-figure-fit {
+  /* Leave room for a caption line under the picture. */
+  --img-max-h: calc(var(--page-px, 30em) - 2.8em);
+}
+
+.paper-body .md-figure-frame {
+  display: block;
+  box-sizing: border-box;
+  width: min(100%, calc(var(--img-max-h) * var(--ratio, 1000)));
+  margin: 0 auto;
+}
+
+.paper-body .md-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: var(--img-max-h);
+  object-fit: contain;
+}
+
+/*
+ * |page: the picture replaces a whole page. In pages mode it starts on a
+ * fresh page, fills the page's entire writing area (cropping the edges when
+ * its proportions differ; |fit shows it whole instead) and the text carries
+ * on on the next page. On a continuous sheet it is simply full width with
+ * no height cap.
+ */
+.paper-body .md-figure-page {
+  width: 100%;
+  margin: 0 0 1em;
+  --img-max-h: 400em;
+}
+
+.paper-body .md-figure-page .md-figure-frame {
+  width: 100%;
+}
+
+/*
+ * In pages mode the picture takes over the whole sheet, margins included.
+ * Its layout box is exactly one page of text area (so pagination is
+ * unchanged); the frame is then stretched out over the margins. One
+ * "paper em" is recovered from container units because the figure's own
+ * em is the (scaled) text size: the paper's content box is 38 - 2·pad-x em.
+ */
+.paper-paged {
+  container-type: inline-size;
+}
+
+.paper-paged .paper-body .md-figure-page {
+  --paper-em: calc(100cqw / (38 - var(--pad-x) * 2));
+  break-before: column;
+  break-after: column;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * The frame is one unsplittable box (overflow: hidden makes it monolithic,
+ * so it overflows instead of fragmenting) pulled out over the margins with
+ * negative margins. It still takes exactly one page of text area in the
+ * flow: its height minus the top and bottom pulls. Absolute positioning is
+ * avoided on purpose — inside columns Chrome places it before the break.
+ */
+.paper-paged .paper-body .md-figure-page .md-figure-frame {
+  position: relative;
+  overflow: hidden;
+  width: auto;
+  height: calc(
+    var(--page-px, 30em) + (var(--pad-top) + var(--pad-bottom)) * var(--paper-em)
+  );
+  /* The extra 2px on the bottom pull keeps sub-pixel rounding from ever
+     pushing the next content onto an extra, empty page. */
+  margin: calc(var(--pad-top) * -1 * var(--paper-em))
+    calc(var(--pad-x) * -1 * var(--paper-em))
+    calc(var(--pad-bottom) * -1 * var(--paper-em) - 2px);
+  transform: none;
+}
+
+.paper-paged .paper-body .md-figure-page img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
+
+/* Edge to edge: no feathered ink edges, see-through blending (the journal's
+   ruled lines would show through) or photo border on a full page. */
+.paper-paged .paper-body .md-figure-page.md-look-ink img {
+  -webkit-mask-image: none;
+  mask-image: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+.paper-paged .paper-body .md-look-photo.md-figure-page .md-figure-frame {
+  padding: 0;
+  box-shadow: none;
+}
+
+/* The caption (inside the frame) floats over the bottom of the picture,
+   just above the page arrows. The frame can't be split across pages, so
+   positioning inside it is safe. */
+.paper-paged .paper-body .md-figure-page .md-figure-caption {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--pad-bottom) * var(--paper-em) + 0.4em);
+  transform: translateX(-50%);
+  max-width: 90%;
+  margin: 0;
+  padding: 0.15em 0.7em;
+  border-radius: 0.8em;
+  background: rgba(238, 226, 196, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.paper-paged .paper-body .md-figure-page.md-figure-fit img {
+  object-fit: contain;
+}
+
+/* The tape would be clipped at the top of the page. */
+.paper-body .md-figure-page .md-figure-frame::before {
+  display: none;
+}
+
+.paper-body .md-figure-caption {
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.82em;
+  font-style: italic;
+  line-height: 1.3;
+  color: rgba(60, 45, 25, 0.85);
+}
+
+/*
+ * Ink (default): printed or drawn onto the sheet. Multiply lets the paper
+ * color show through the whites, and feathered edges melt into the page.
+ */
+.paper-body .md-look-ink img {
+  mix-blend-mode: multiply;
+  filter: sepia(0.55) saturate(0.75) contrast(1.08) brightness(1.02);
+  opacity: 0.92;
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent),
+    linear-gradient(180deg, transparent, #000 5%, #000 95%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent),
+    linear-gradient(180deg, transparent, #000 5%, #000 95%, transparent);
+  mask-composite: intersect;
+}
+
+/* Photo: a print tucked onto the page with a white border and tape.
+   The top padding keeps the tape inside the figure, so on a page break it
+   travels with the photo instead of peeking out at the previous page. */
+.paper-body .md-look-photo {
+  padding-top: 0.6em;
+}
+
+.paper-body .md-look-photo .md-figure-frame {
+  position: relative;
+  padding: 0.45em 0.45em 0.55em;
+  background: #f6f1e4;
+  box-shadow:
+    0 0.15em 0.4em rgba(40, 25, 5, 0.35),
+    0 0 0 1px rgba(80, 60, 30, 0.12);
+  transform: rotate(-1.4deg);
+}
+
+.paper-body .md-look-photo.md-figure-right .md-figure-frame {
+  transform: rotate(1.6deg);
+}
+
+.paper-body .md-look-photo .md-figure-frame::before {
+  content: "";
+  position: absolute;
+  top: -0.55em;
+  left: 50%;
+  width: 4.2em;
+  height: 1.2em;
+  transform: translateX(-50%) rotate(-3deg);
+  background: rgba(236, 226, 196, 0.72);
+  box-shadow: 0 0.05em 0.15em rgba(60, 40, 10, 0.2);
+}
+
+.paper-body .md-look-photo img {
+  filter: sepia(0.25) saturate(0.85) contrast(1.02);
+}
+
+/* Plain: the picture's own colors, only the paper overlays on top. */
+.paper-body .md-look-plain img {
+  filter: none;
+}
+
+.paper-body .md-figure-broken .md-figure-frame {
+  padding: 1.2em 0.8em;
+  border: 1px dashed rgba(80, 60, 25, 0.45);
+  font-size: 0.8em;
+  font-style: italic;
+  color: rgba(80, 60, 25, 0.8);
+  transform: none;
+}
+
 /* D&D Tags */
 .md-tag {
   display: inline-block;
@@ -259,6 +563,8 @@
 
 .paper-scroll .roll {
   position: absolute;
+  /* Rollers stay in front of a full-bleed picture. */
+  z-index: 1;
   left: -1em;
   right: -1em;
   height: 2.2em;
@@ -396,21 +702,29 @@
 
 /*
  * Paged documents flow their text into page-sized CSS columns and show one
- * column at a time through a clipping window. Geometry (must match the
- * constants in paperRender.ts): the paper is 38em wide with 3.6em side
- * padding, so a page column is 30.8em and the column gap is both paddings
- * (7.2em) — every page starts exactly 38em after the previous one, and
- * flipping is a translateX in whole paper-widths.
+ * column at a time through a clipping window. Geometry: the paper is 38em
+ * wide with --pad-x side margins, so a page column is 38em - 2·pad-x and the
+ * column gap is both margins — every page starts exactly 38em after the
+ * previous one, and flipping is a translateX in whole paper-widths.
+ *
+ * The clipping window reaches out over the paper's margins (negative margin,
+ * matching padding), so text still sits inside the margins but a full-page
+ * picture can bleed to the paper's edges. Each page's bleed area is exactly
+ * half of the gap on either side, so neighbouring pages never peek in.
  */
 .paper-clip {
   overflow: hidden;
-  height: var(--page-h, 33em);
+  height: calc(var(--page-h, 33em) + (var(--pad-top) + var(--pad-bottom)) * 1em);
+  margin: calc(var(--pad-top) * -1em) calc(var(--pad-x) * -1em)
+    calc(var(--pad-bottom) * -1em);
+  padding: calc(var(--pad-top) * 1em) calc(var(--pad-x) * 1em)
+    calc(var(--pad-bottom) * 1em);
 }
 
 .paper-pages {
   height: 100%;
-  column-width: 30.8em;
-  column-gap: 7.2em;
+  column-width: calc(38em - var(--pad-x) * 2em);
+  column-gap: calc(var(--pad-x) * 2em);
   column-fill: auto;
   transform: translateX(calc(var(--page, 0) * -38em));
   transition: transform 0.3s ease;
@@ -436,9 +750,16 @@
 /* Page flipper, sitting in the paper's bottom margin. */
 .page-nav {
   position: absolute;
-  left: 3.6em;
-  right: 3.6em;
-  bottom: 1.15em;
+  left: calc(var(--pad-x) * 1em);
+  right: calc(var(--pad-x) * 1em);
+  bottom: 0.9em;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 0.1em 0.5em;
+  border-radius: 1em;
+  /* Stays readable over a full-bleed picture; invisible on plain paper. */
+  background: rgba(238, 226, 196, 0.35);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -471,6 +792,81 @@
 .page-nav button:disabled {
   opacity: 0.25;
   cursor: default;
+}
+
+/* --------------------------------------------------------------- picture */
+
+/*
+ * A `picture` item: the image as a mounted print (cream border, soft
+ * shadow), with its description on a parchment strip tucked underneath.
+ * Sized in em so the reader's zoom scales it like the papers.
+ */
+.picture-card {
+  font-size: calc(16px * var(--zoom, 1));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(52em, 100%);
+  flex-shrink: 0;
+}
+
+.picture-mount {
+  padding: 0.6em;
+  background: #f4ecd8;
+  border-radius: 3px;
+  box-shadow:
+    0 1.2em 2.4em rgba(0, 0, 0, 0.55),
+    0 0.15em 0.5em rgba(0, 0, 0, 0.35);
+}
+
+.picture-img {
+  display: block;
+  max-width: 100%;
+  max-height: 36em;
+  object-fit: contain;
+}
+
+.picture-missing {
+  display: grid;
+  place-items: center;
+  width: 24em;
+  height: 16em;
+  color: rgba(80, 60, 25, 0.8);
+  font-family: Georgia, "Palatino Linotype", serif;
+  font-style: italic;
+  text-align: center;
+}
+
+.picture-missing span {
+  padding: 0 1.5em;
+}
+
+.picture-text {
+  position: relative;
+  width: min(34em, 100%);
+  margin-top: -0.4em;
+  padding: 1em 1.4em 0.8em;
+  font-family: "IM Fell English", Georgia, serif;
+  font-size: calc(1.05em * var(--font-scale, 1));
+  line-height: 1.5;
+  color: #2c2418;
+  background: radial-gradient(
+    120% 100% at 25% 0%,
+    #f7eed6 0%,
+    #efe1bf 55%,
+    #e0cba0 100%
+  );
+  border-radius: 2px;
+  box-shadow: 0 0.6em 1.4em rgba(0, 0, 0, 0.45);
+  transform: rotate(-0.6deg);
+}
+
+.picture-text p {
+  margin: 0 0 0.6em;
+}
+
+.picture-text > :last-child {
+  margin-bottom: 0;
 }
 
 /* --------------------------------------------------------------- ID card */

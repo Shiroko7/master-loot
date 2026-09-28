@@ -195,6 +195,14 @@ export const BADGE_CORNERS: readonly BadgeCorner[] = [
   "bottom-left",
 ];
 
+/**
+ * Loot badge size. The image is BADGE_SOURCE_PX square and renders at
+ * BADGE_SOURCE_PX / BADGE_DPI grid cells: 128 / 512 = a quarter of a cell.
+ * The background script resizes badges from older versions to match.
+ */
+export const BADGE_SOURCE_PX = 128;
+export const BADGE_DPI = 512;
+
 /** Room-wide badge corner preference; defaults to top-right. */
 export async function getBadgeCorner(): Promise<BadgeCorner> {
   const { badgeCorner } = await getSettings();
@@ -234,7 +242,9 @@ export async function badgePosition(
     OBR.scene.items.getItemBounds([tokenId]),
     OBR.scene.grid.getDpi(),
   ]);
-  const inset = dpi * 0.18;
+  // Keep the badge centre the same fraction of its own size in from the
+  // corner whatever its size (0.36 of a badge = 0.18 cell at half a cell).
+  const inset = dpi * (BADGE_SOURCE_PX / BADGE_DPI) * 0.36;
   return {
     x: corner.includes("right") ? bounds.max.x - inset : bounds.min.x + inset,
     y: corner.includes("bottom") ? bounds.max.y - inset : bounds.min.y + inset,
@@ -244,9 +254,9 @@ export async function badgePosition(
 async function attachBadge(tokenId: string): Promise<void> {
   const url = resolveBadgeImage(await getBadgeImageSetting());
   const badge = buildImage(
-    // Rendered size is width/dpi grid cells, so 128/256 is half a cell.
-    { url, mime: badgeMime(url), width: 128, height: 128 },
-    { dpi: 256, offset: { x: 64, y: 64 } },
+    // Rendered size is width/dpi grid cells (see BADGE_DPI).
+    { url, mime: badgeMime(url), width: BADGE_SOURCE_PX, height: BADGE_SOURCE_PX },
+    { dpi: BADGE_DPI, offset: { x: BADGE_SOURCE_PX / 2, y: BADGE_SOURCE_PX / 2 } },
   )
     .attachedTo(tokenId)
     .layer("ATTACHMENT")
@@ -365,46 +375,28 @@ export async function openEditorModal(tokenId: string): Promise<void> {
   });
 }
 
-export async function openDocumentModal(
-  tokenId: string,
-  docId: string,
-  size: { width: number; height: number } = { width: 1100, height: 820 },
-): Promise<void> {
-  const savedSize = getSavedWindowSize("document", size);
-  const center = await centerViewportAnchor();
-  await OBR.popover.open({
+/**
+ * The reader opens as a full-screen Owlbear modal. Modals are drawn above
+ * every popover, so a document opened from the loot window (or an
+ * inventory) can never end up hidden behind it, and that window stays open
+ * underneath, as it was, for when the reader is closed. The reader has its
+ * own zoom and text-size controls, so it needs no window resizing.
+ */
+function openReader(query: string): Promise<void> {
+  return OBR.modal.open({
     id: DOC_MODAL_ID,
-    url: `/document.html?token=${encodeURIComponent(tokenId)}&doc=${encodeURIComponent(docId)}`,
-    width: savedSize.width,
-    height: savedSize.height,
+    url: `/document.html?${query}`,
+    fullScreen: true,
     hidePaper: true,
-    disableClickAway: true,
-    anchorReference: "POSITION",
-    anchorPosition: center,
-    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
   });
 }
 
-export async function openUserDocumentModal(
-  userId: string,
-  docId: string,
-  size: { width: number; height: number } = { width: 1100, height: 820 },
-): Promise<void> {
-  const savedSize = getSavedWindowSize("document", size);
-  const center = await centerViewportAnchor();
-  await OBR.popover.open({
-    id: DOC_MODAL_ID,
-    url: `/document.html?user=${encodeURIComponent(userId)}&doc=${encodeURIComponent(docId)}`,
-    width: savedSize.width,
-    height: savedSize.height,
-    hidePaper: true,
-    disableClickAway: true,
-    anchorReference: "POSITION",
-    anchorPosition: center,
-    anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-    transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-  });
+export function openDocumentModal(tokenId: string, docId: string): Promise<void> {
+  return openReader(`token=${encodeURIComponent(tokenId)}&doc=${encodeURIComponent(docId)}`);
+}
+
+export function openUserDocumentModal(userId: string, docId: string): Promise<void> {
+  return openReader(`user=${encodeURIComponent(userId)}&doc=${encodeURIComponent(docId)}`);
 }
 
 export async function openInventoryModal(targetUserId?: string): Promise<void> {

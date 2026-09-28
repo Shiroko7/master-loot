@@ -15,13 +15,11 @@ import { renderMarkdownInto } from "./markdown";
 const BREAK_LINE = /^[^\S\n]*(?:[-–—―_*][^\S\n]*){3,}$/m;
 
 /*
- * Page geometry, in the paper's own em units. Must stay in sync with
- * paper.css: the paper is 38em wide with 3.6em side padding, so one page
- * column is 30.8em and the gap between columns is the two paddings (7.2em),
- * making each page start exactly one paper-width (38em) apart.
+ * Every page starts exactly one paper-width (38em, see .paper in paper.css)
+ * after the previous one. The column gap comes from the paper's margins
+ * (--pad-x) and is read back from CSS at layout time.
  */
 const PAGE_STEP_EM = 38;
-const PAGE_GAP_EM = 7.2;
 
 export interface RenderedDocument {
   /** True when the document renders as flippable pages. */
@@ -63,7 +61,9 @@ export function renderDocument(
   paper.className = `paper paper-${doc.style} paper-tex-${texture}`;
   if (paged) paper.classList.add("paper-paged");
 
-  const font = DOC_FONT_META[doc.font ?? STYLE_DEFAULT_FONT[doc.style]];
+  const fontKey = doc.font ?? STYLE_DEFAULT_FONT[doc.style];
+  const font = DOC_FONT_META[fontKey];
+  paper.dataset.font = fontKey;
   paper.style.setProperty("--doc-font", font.family);
   paper.style.setProperty("--font-adjust", String(font.adjust));
 
@@ -142,10 +142,15 @@ export function renderDocument(
       nextBtn.disabled = page === count - 1;
     };
     const relayout = (): void => {
+      // Pictures size themselves against the real page height (see the
+      // md-figure rules in paper.css); set it before counting pages.
+      // (The pages box, not the clip: the clip also spans the margins.)
+      paper.style.setProperty("--page-px", `${pages.clientHeight}px`);
       const em = parseFloat(getComputedStyle(paper).fontSize) || 16;
+      const gap = parseFloat(getComputedStyle(pages).columnGap) || 0;
       count = Math.max(
         1,
-        Math.round((clip.scrollWidth + PAGE_GAP_EM * em) / (PAGE_STEP_EM * em)),
+        Math.round((pages.scrollWidth + gap) / (PAGE_STEP_EM * em)),
       );
       nav.hidden = count <= 1;
       setPage(page);
@@ -153,10 +158,28 @@ export function renderDocument(
     prevBtn.onclick = () => setPage(page - 1);
     nextBtn.onclick = () => setPage(page + 1);
 
-    // Measure once attached, and again when the web fonts finish loading
-    // (their metrics change how much text fits on a page).
+    // Measure once attached, then again whenever the text's size really
+    // changes: web fonts arriving (their metrics change how much fits on a
+    // page), pictures loading, zoom. `document.fonts.ready` alone isn't
+    // enough — right after rendering no font download has started yet, so
+    // it resolves immediately and measures the fallback font.
     requestAnimationFrame(relayout);
     void document.fonts?.ready.then(() => relayout());
+    let queued = false;
+    const observer = new ResizeObserver(() => {
+      if (!paper.isConnected) {
+        observer.disconnect();
+        return;
+      }
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        relayout();
+      });
+    });
+    observer.observe(body);
+    observer.observe(clip);
 
     handle = {
       paged: true,

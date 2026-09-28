@@ -11,6 +11,7 @@ import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
 import { NetworkProtocol, type SocketMessage } from "./inventory/NetworkProtocol";
 import type { UserInventoryItem } from "./modules/inventory/UserInventoryModel";
 import { renderMarkdownInto } from "./markdown";
+import { buildSlotPicture } from "./pictureView";
 import {
   RARITY_META,
   formatCoins,
@@ -137,13 +138,20 @@ function renderSlot(item: LootItem, tokenName: string): HTMLElement {
   const icon = el("span", "slot-icon");
   icon.textContent =
     item.icon ||
-    (item.kind === "document" ? "📜" : item.kind === "idcard" ? "🪪" : "⚔️");
+    (item.kind === "document"
+      ? "📜"
+      : item.kind === "idcard"
+        ? "🪪"
+        : item.kind === "picture"
+          ? "🖼️"
+          : "⚔️");
 
   const name = el("span", "slot-name");
   name.textContent = item.name;
-  if (item.kind === "document" || item.kind === "idcard") {
+  if (item.kind === "document" || item.kind === "idcard" || item.kind === "picture") {
     const sub = el("span", "slot-sub");
-    sub.textContent = item.kind === "document" ? "Click to read" : "Click to inspect";
+    sub.textContent =
+      item.kind === "document" ? "Click to read" : item.kind === "picture" ? "Click to view" : "Click to inspect";
     name.append(sub);
   }
 
@@ -178,15 +186,15 @@ function renderSlot(item: LootItem, tokenName: string): HTMLElement {
   slot.append(icon, name, controls);
 
   const href = safeHttpUrl(item.link);
-  if (item.kind === "document") {
+  if (item.kind === "document" || item.kind === "picture" || item.kind === "idcard") {
     slot.onclick = () => void openDocumentModal(tokenId, item.id);
-  } else if (item.kind === "idcard") {
-    // A card is far smaller than a full sheet of paper; shrink the modal.
-    slot.onclick = () =>
-      void openDocumentModal(tokenId, item.id, { width: 720, height: 600 });
-  } else if (item.description || href) {
+  } else if (item.description || href || item.imageUrl?.trim()) {
     if (openDescriptions.has(item.id)) {
       const desc = el("div", "slot-desc");
+      const picture = buildSlotPicture(item.imageUrl, item.name, () =>
+        void openDocumentModal(tokenId, item.id),
+      );
+      if (picture) desc.append(picture);
       if (item.description) {
         renderMarkdownInto(desc, item.description);
       }
@@ -244,9 +252,10 @@ function renderInventorySlot(item: UserInventoryItem, tokenName: string): HTMLEl
     nameWrapper.append(tagsWrapper);
   }
 
-  if (item.data?.kind === "document" || item.data?.kind === "idcard") {
+  if (item.data?.kind === "document" || item.data?.kind === "idcard" || item.data?.kind === "picture") {
     const sub = el("span", "slot-sub");
-    sub.textContent = item.data.kind === "document" ? "Click to read" : "Click to inspect";
+    sub.textContent =
+      item.data.kind === "document" ? "Click to read" : item.data.kind === "picture" ? "Click to view" : "Click to inspect";
     nameWrapper.append(sub);
   }
 
@@ -308,10 +317,9 @@ function renderInventorySlot(item: UserInventoryItem, tokenName: string): HTMLEl
   slot.append(icon, nameWrapper, controls);
 
   slot.onclick = () => {
-    if (item.data?.kind === "document") {
+    const kind = item.data?.kind;
+    if (kind === "document" || kind === "picture" || kind === "idcard") {
       void openUserDocumentModal(myId, item.id);
-    } else if (item.data?.kind === "idcard") {
-      void openUserDocumentModal(myId, item.id, { width: 720, height: 600 });
     }
   };
 

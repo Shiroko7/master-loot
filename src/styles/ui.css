@@ -362,6 +362,29 @@ button {
   margin: 0 2px;
 }
 
+.slot-desc .md-figure {
+  display: block;
+  max-width: 100%;
+  margin: 6px auto;
+  text-align: center;
+}
+
+.slot-desc .md-figure img {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  margin: 0 auto;
+  border-radius: 3px;
+}
+
+.slot-desc .md-figure-caption {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  margin-top: 2px;
+}
+
 .slot-link {
   display: inline-block;
   margin-top: 4px;
@@ -693,16 +716,92 @@ label.field > span {
 }
 
 .add-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
-/* five add buttons in a 300px pane: flow at natural width, never split a label */
-.add-row .btn {
-  flex: 1 1 auto;
+.add-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 6px 2px;
+}
+
+.add-folder-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.add-folder-link:hover {
+  color: var(--gold-bright);
+  background: rgba(201, 162, 39, 0.1);
+}
+
+/* six equal tiles, 3 across in the 300px list pane */
+.add-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.add-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 4px 7px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.add-tile:hover {
+  border-color: var(--gold);
+  background: rgba(201, 162, 39, 0.1);
+}
+
+.add-tile:hover .add-tile-label {
+  color: var(--gold-bright);
+}
+
+.add-tile:active {
+  transform: translateY(1px);
+}
+
+.add-tile:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 1px;
+}
+
+.add-tile-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.add-tile-label {
+  font-size: 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  transition: color 0.15s;
 }
 
 /* 5e.tools import */
@@ -787,6 +886,31 @@ label.field > span {
   text-align: right;
 }
 
+/* A long "Save failed…" message truncates (full text in the tooltip)
+   instead of pushing the header controls off a narrow window. */
+.panel-header .status {
+  flex: 0 1 auto;
+  min-width: 64px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-header .switch {
+  flex-shrink: 0;
+}
+
+/* The container name gives up space first on a narrow window. */
+.panel-header > input {
+  flex: 0 1 220px;
+  min-width: 70px;
+}
+
+.panel-header .panel-title {
+  min-width: 36px;
+}
+
 .tabs {
   display: flex;
   gap: 6px;
@@ -804,6 +928,32 @@ label.field > span {
   color: var(--muted);
   font-size: 11px;
   margin-top: 2px;
+}
+
+.tabs .tab-preview {
+  margin-left: auto;
+}
+
+/* Quick preview (Ctrl+P): the players’ reader laid over the editor. The
+   backdrop stands in for the map the real reader floats over. */
+.quick-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 7, 3, 0.94);
+  outline: none;
+  animation: quick-preview-in 0.12s ease-out;
+}
+
+@keyframes quick-preview-in {
+  from { opacity: 0; }
+}
+
+.quick-preview > .doc-page {
+  flex: 1;
+  min-height: 0;
 }
 
 .preview-wrap {
@@ -1332,26 +1482,126 @@ label.field > span {
 }
 
 /* Emoji Picker in Modal */
-.emoji-suggestions {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  margin-top: 4px;
+/* Emoji picker: icon button + searchable panel (src/emojiPicker.ts). */
+.emoji-picker-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 8px 0 10px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.emoji-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-soft);
-  border-radius: 4px;
-  padding: 2px 6px;
-  cursor: pointer;
-  font-size: 14px;
+.emoji-picker-button:hover,
+.emoji-picker-button[aria-expanded="true"] {
+  border-color: var(--gold);
+  box-shadow: 0 0 8px rgba(201, 162, 39, 0.3);
+}
+
+.emoji-picker-face {
+  font-size: 20px;
   line-height: 1;
 }
 
-.emoji-btn:hover {
-  background: rgba(212, 175, 55, 0.2);
+.emoji-picker-caret {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.emoji-panel {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  max-height: min(380px, calc(100vh - 16px));
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  padding: 8px;
+  gap: 4px;
+}
+
+.emoji-panel .emoji-search {
+  width: 100%;
+  margin: 0;
+}
+
+.emoji-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.emoji-section-title {
+  position: sticky;
+  top: 0;
+  padding: 6px 2px 4px;
+  background: var(--bg-1);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 2px;
+}
+
+.emoji-cell {
+  height: 34px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji-cell:hover,
+.emoji-cell:focus-visible {
+  background: rgba(201, 162, 39, 0.15);
+  border-color: var(--border);
+  outline: none;
+}
+
+.emoji-cell.selected {
+  background: rgba(201, 162, 39, 0.22);
   border-color: var(--gold);
+}
+
+.emoji-empty {
+  padding: 16px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
+.emoji-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.emoji-custom input {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ----------------------------------------------------------------- Window Resizing */
@@ -1652,6 +1902,11 @@ body.window-resizing .window-resize-handle {
   margin-bottom: 6px;
 }
 
+.doc-image-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .doc-image-title {
   font-family: "Cinzel", serif;
   font-size: 13px;
@@ -1785,6 +2040,47 @@ body.window-resizing .window-resize-handle {
   gap: 10px;
 }
 
+.doc-picture-help {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--gold);
+  border-radius: 4px;
+  background: rgba(201, 162, 39, 0.06);
+}
+
+.doc-picture-help-title {
+  color: var(--gold-bright);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.doc-picture-help-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.doc-picture-help-row {
+  display: grid;
+  grid-template-columns: minmax(0, 190px) 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-picture-help-row .doc-syntax-code {
+  white-space: normal;
+  word-break: break-all;
+}
+
+.doc-quick-insert {
+  margin-bottom: 8px;
+  border: 1px solid var(--border-soft);
+}
+
 .doc-syntax-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1821,6 +2117,11 @@ body.window-resizing .window-resize-handle {
   background: rgba(201, 162, 39, 0.15);
   box-shadow: 0 0 6px rgba(201, 162, 39, 0.3);
   transform: translateY(-1px);
+}
+
+.doc-syntax-chip-accent {
+  border-color: var(--border);
+  color: var(--gold-bright);
 }
 
 .doc-syntax-chip:active {
@@ -1884,4 +2185,54 @@ body.window-resizing .window-resize-handle {
   .doc-syntax-example {
     display: none;
   }
+}
+
+/* Picture item: Owlbear picker button beside the pasted-link fallback. */
+.picture-source {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.picture-source .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.picture-source input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* An item's picture, shown above its description when the slot is opened. */
+.slot-picture {
+  margin: 2px 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.slot-picture img {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+
+.slot-picture-open {
+  cursor: zoom-in;
+  transition: border-color 0.15s;
+}
+
+.slot-picture-open:hover {
+  border-color: var(--gold);
+}
+
+.slot-picture-missing {
+  padding: 16px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
 }
