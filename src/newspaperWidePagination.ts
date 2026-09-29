@@ -56,7 +56,7 @@ export function fillNewspaperWidePage(
 
   function fill(columns: HTMLElement[], pending: HTMLElement[]) {
     for (const column of columns) {
-      column.style.setProperty("--newspaper-image-height", `${Math.max(32, column.clientHeight * .42)}px`);
+      column.style.setProperty("--newspaper-image-height", `${Math.max(32, column.clientHeight * .6)}px`);
       fillNewspaperColumn(column, pending);
     }
   }
@@ -77,7 +77,7 @@ export function fillNewspaperWidePage(
         const image = picture.querySelector<HTMLImageElement>("img");
         const available = image ? remaining - (picture.offsetHeight - image.clientHeight) : 0;
         if (image && available >= Math.min(64, image.clientHeight * .5)) {
-          image.style.maxHeight = `${Math.floor(available)}px`;
+          image.style.setProperty("--img-cap", `${Math.floor(available)}px`);
         }
       }
       if (picture.offsetHeight > remaining + .5 && content.children.length > 1) {
@@ -117,21 +117,22 @@ export function fillNewspaperWidePage(
     let chosenHeight = remaining;
     let sharesPage = false;
     if (fits(remaining)) {
-      const picture = widePicture(queue[wideIndex]);
-      const imageHeight = picture.offsetHeight;
-      picture.remove();
-      const upper = remaining - imageHeight;
-      if (upper >= minimum && fits(upper)) {
-        let low = minimum;
-        let high = upper;
+      // Balance the text above the picture across the columns (the shortest
+      // region that holds it) instead of filling one column and leaving the
+      // next empty. The picture then takes the room below, shrinking to fit
+      // when needed; if even that is too little it opens the next page.
+      let low = minimum;
+      let high = remaining;
+      if (fits(low)) high = low;
+      else {
         while (high - low > 1) {
           const mid = (low + high) / 2;
           if (fits(mid)) high = mid;
           else low = mid;
         }
-        chosenHeight = Math.ceil(high);
-        sharesPage = true;
       }
+      chosenHeight = Math.ceil(high);
+      sharesPage = remaining - chosenHeight > .5;
     }
     region.style.height = `${chosenHeight}px`;
     columns.forEach(column => { column.replaceChildren(); column.style.removeProperty("height"); });

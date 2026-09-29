@@ -436,3 +436,33 @@ test("Inline picture widths coexist with print filters without changing captions
   assert.equal(pages[0].images[1].filter, "raw");
   assert.equal(pages[0].images[1].caption, "A | literal caption");
 });
+
+test("|auto pictures join the story's placeable pictures instead of anchoring in the text", () => {
+  const pages = parseNewspaperPages({ style: "newspaper", title: "Gazette",
+    content: "# HEADLINE\n\nThe mayor spoke ![Mayor at the podium|auto|sepia](https://example.com/mayor.png) at noon.\n\n![Harbour](https://example.com/harbour.png)" });
+  const [page] = pages;
+  assert.deepEqual(page.blocks.map(block => block.kind), ["paragraph", "image"]);
+  assert.equal(page.blocks[0].kind === "paragraph" && page.blocks[0].text, "The mayor spoke\nat noon.");
+  assert.equal(page.images[0].caption, "Mayor at the podium");
+  assert.equal(page.images[0].filter, "sepia");
+  assert.equal(page.images.length, 2);
+});
+
+test("|wide is an alias for the full page width", () => {
+  const [page] = parseNewspaperPages({ style: "newspaper", title: "Gazette",
+    content: "![Harbor|wide|sepia](https://example.com/wide.png)" });
+  assert.equal(page.images[0].width, "page");
+  assert.equal(page.images[0].filter, "sepia");
+  assert.equal(page.images[0].caption, "Harbor");
+});
+
+test("::: inserts become one block, keeping blank lines, --- and # headings inside them", () => {
+  const pages = parseNewspaperPages({ style: "newspaper", title: "Gazette",
+    content: "# THE LEDGER\n\nIntro.\n\n::: Test|typed\n\nEntry 1.\n\n---\n\n# Not a story\n\nEntry 2.\n:::\n\nAfter." });
+  assert.equal(pages.length, 1, "breaks inside the insert do not start pages or stories");
+  assert.deepEqual(pages[0].blocks.map(block => block.kind), ["paragraph", "insert", "paragraph"]);
+  const insert = pages[0].blocks[1];
+  assert.ok(insert.kind === "insert");
+  assert.equal(insert.header, "Test|typed");
+  assert.equal(insert.text, "\nEntry 1.\n\n---\n\n# Not a story\n\nEntry 2.");
+});

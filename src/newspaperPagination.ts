@@ -104,18 +104,21 @@ export function fillNewspaperColumn(column: HTMLElement, queue: HTMLElement[]): 
         const height = image.getBoundingClientRect().height;
         const available = height + room;
         if (available >= Math.max(lineHeight * 3, height * .45) && available < height) {
-          const previous = image.style.maxHeight;
-          image.style.maxHeight = `${Math.floor(available)}px`;
+          const previous = image.style.getPropertyValue("--img-cap");
+          image.style.setProperty("--img-cap", `${Math.floor(available)}px`);
           if (fits(node, column)) {
             queue.shift();
             continue;
           }
-          image.style.maxHeight = previous;
+          image.style.setProperty("--img-cap", previous);
         }
       }
     }
 
-    if (!isPicture && !isCrosshead && (node.tagName === "P" || column.children.length === 1)) {
+    // Framed documents (`:::` inserts) run on into the next column like
+    // prose; the frame is drawn on both parts.
+    const isInsert = node.classList.contains("md-insert");
+    if (!isPicture && !isCrosshead && (node.tagName === "P" || isInsert || column.children.length === 1)) {
       const tail = splitToFit(node, column);
       if (tail) {
         queue[0] = tail;

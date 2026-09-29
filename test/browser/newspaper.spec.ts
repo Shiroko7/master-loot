@@ -660,3 +660,28 @@ test("a full-width picture can sit between two text regions on the same page", a
   expect(imageWidth / sheet.width).toBeGreaterThan(.9);
   await page.locator(".paper").screenshot({ path: info.outputPath("full-width-story-picture.png") });
 });
+
+test("|auto pictures written late in the story still become the front-page lead photo", async ({ page }) => {
+  const image = picture(1);
+  await render(page, { style: "newspaper", title: "Gazette", newspaperLayout: "hero",
+    content: `# HARBOR REOPENS\n\n${content}\n\n![The harbor at first light|auto](${image.url})` });
+  const result = await measure(page);
+  checkGeometry(result);
+  expect(normalize(result.text)).toBe(normalize(paragraphs.join(" ")));
+  await expect(page.locator(".newspaper-slot-hero .newspaper-caption")).toHaveText("The harbor at first light");
+});
+
+test("text before a |wide picture is balanced across both columns, never leaving one empty", async ({ page }) => {
+  const short = paragraphs.map(text => text.slice(0, 420));
+  await render(page, { style: "newspaper", title: "Gazette", newspaperLayout: "split-lead",
+    content: `# HARBOR\n\n${short.slice(0, 2).join("\n\n")}\n\n![One|wide](${picture(1).url})\n\n${short.slice(2, 5).join("\n\n")}\n\n![Two|wide](${picture(0).url})\n\n${short.slice(5, 9).join("\n\n")}` });
+  const result = await measure(page);
+  checkGeometry(result);
+  const emptyBeside = await page.locator(".newspaper-reading-region .newspaper-column-grid").evaluateAll(grids =>
+    grids.filter(grid => {
+      const counts = Array.from(grid.children).map(column => column.children.length);
+      return counts.some(count => count > 0) && counts.some(count => count === 0);
+    }).length);
+  expect(emptyBeside).toBe(0);
+  expect(await page.locator(".newspaper-slot-page .newspaper-caption").allTextContents()).toEqual(["One", "Two"]);
+});

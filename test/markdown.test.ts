@@ -94,6 +94,7 @@ import {
   renderMarkdown,
   renderMarkdownInto,
   parseFigureSpec,
+  splitOutsideInserts,
 } from "../src/markdown";
 
 test("isSafeUrl: validates safe web and mailto protocols and blocks dangerous ones", () => {
@@ -445,4 +446,38 @@ test("parseFigureSpec: |page makes a centered full-width picture on its own page
   const figure = target.children[0] as MockElement;
   assert.ok(figure.className.includes("md-figure-page"));
   assert.ok(figure.className.includes("md-figure-fit"));
+});
+
+test("renderMarkdownInto: ::: inserts frame several blocks as a separate document", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement,
+    "Dear diary,\n\n::: Wanted Notice|official\nFirst paragraph.\n\n- a list\n\nLast one.\n:::\n\nBack to me.");
+  assert.equal(target.children.length, 3);
+  const insert = target.children[1] as MockElement;
+  assert.equal(insert.tagName, "SECTION");
+  assert.equal(insert.className, "md-insert md-insert-official");
+  const kinds = insert.children.map(child => (child as MockElement).tagName);
+  assert.deepEqual(kinds, ["HEADER", "P", "UL", "P"]);
+  assert.equal((target.children[2] as MockElement).tagName, "P");
+});
+
+test("renderMarkdownInto: insert looks, bare looks and capitalised titles", () => {
+  const render = (text: string) => {
+    const target = new MockElement("div");
+    renderMarkdownInto(target as unknown as HTMLElement, text);
+    return target.children[0] as MockElement;
+  };
+  assert.equal(render(":::\nplain\n:::").className, "md-insert md-insert-print");
+  const typed = render("::: typed\nreport\n:::");
+  assert.equal(typed.className, "md-insert md-insert-typed");
+  assert.equal((typed.children[0] as MockElement).tagName, "P", "a bare look adds no title");
+  const note = render("::: Note\nunclosed runs to the end");
+  assert.equal(note.className, "md-insert md-insert-print");
+  assert.equal((note.children[0] as MockElement).tagName, "HEADER");
+});
+
+test("splitOutsideInserts: page breaks inside an insert stay part of it", () => {
+  const isBreak = (line: string) => line.trim() === "---";
+  assert.deepEqual(splitOutsideInserts("a\n---\n:::\nb\n---\nc\n:::\n---\nd", isBreak),
+    ["a", ":::\nb\n---\nc\n:::", "d"]);
 });

@@ -1140,8 +1140,10 @@ function buildPictureHelp(isNewspaper: boolean): HTMLElement {
 
   if (isNewspaper) {
     example("![Caption](link)", "Picture at this point in the story, with a caption");
-    example("![Caption|page](link)", "Spans the whole page width");
-    example("![Caption|column](link)", "Stays inside its reading column");
+    example("![Caption|auto](link)", "Placed where it fits best: lead photo under the headline, or between the story's paragraphs");
+    example("![Caption|wide](link)", "Spans both columns, text flows above and below it (|page also works)");
+    example("![Caption|column](link)", "Stays inside one reading column (the default)");
+    example("![Caption|auto|wide](link)", "Options combine: placed automatically, spanning both columns");
     example("![Caption|engraving](link)", "Print look: halftone, engraving, sepia, color-press or raw");
   } else {
     example("![Caption](link)", "On its own line: large and centered, caption underneath");
@@ -1221,7 +1223,8 @@ function buildDocumentSyntaxGuide(
     void pickOwlbearImages().then(([picked]) => {
       if (!picked) return;
       // No caption: the upload's file name is private to the GM.
-      insertSnippet('\n![', `](${picked.url})\n`);
+      // Newspapers let the layout place the picture, like a real front page.
+      insertSnippet(isNewspaper ? '\n![|auto' : '\n![', `](${picked.url})\n`);
     });
   });
   owlbearChip.classList.add("doc-syntax-chip-accent");
@@ -1253,6 +1256,9 @@ function buildDocumentSyntaxGuide(
       createChip('*Italic*', 'Italic text', () =>
         insertSnippet('*', '*', 'italic text')
       ),
+      createChip('📄 Document', 'Frame the selected text as a separate printed document', () =>
+        insertSnippet('\n::: Document title\n', '\n:::\n', 'Text of the document…')
+      ),
       createChip('--- Page', 'Start a new newspaper page with new layout', () =>
         insertSnippet('\n\n---\n\n', '', '# NEXT STORY HEADLINE')
       ),
@@ -1282,6 +1288,9 @@ function buildDocumentSyntaxGuide(
       ),
       createChip('- List', 'Bullet list item', () =>
         insertSnippet('\n- ', '\n', 'List item')
+      ),
+      createChip('📄 Document', 'Frame the selected text as a separate printed document', () =>
+        insertSnippet('\n::: Document title\n', '\n:::\n', 'Text of the document…')
       ),
       createChip('🖼 Picture', 'Picture on its own line, centered', () =>
         insertSnippet('\n![Caption](', ')\n', 'https://i.imgur.com/…')
@@ -1323,6 +1332,7 @@ function buildDocumentSyntaxGuide(
     addRow('### Crosshead', 'Centered in-column section divider', '### NEW WITNESSES');
     addRow('==text==', 'Printed yellow ink marker highlighting', '==ancient sorcery==');
     addRow('*Note / Bulletin*', 'Framed public notice / reward inquiry box', '*Report to the Watch.*');
+    addRow('::: Title … :::', 'Reprinted document (several paragraphs); look: print, typed, official or note', '::: The Ledger|typed');
     addRow('---', 'Manual page break (long articles also auto-paginate)', '---');
     addRow('![Caption|filter](url)', 'Illustration with halftone / engraving / sepia', '![Dragon|engraving](https://...)');
     addRow('![Caption|page](url)', 'Picture spanning one page, at this point in the story', '![City panorama|page|engraving](https://...)');
@@ -1335,6 +1345,8 @@ function buildDocumentSyntaxGuide(
     addRow('~~text~~', 'Strikethrough text', '~~crossed out~~');
     addRow('==text==', 'Highlighted text', '==vital clue==');
     addRow('> text', 'Indented quote / excerpt', '> A hero never yields.');
+    addRow('::: Title … :::', 'Framed document inside the page (any number of paragraphs); a ::: line opens and closes it', '::: Wanted Notice');
+    addRow('::: Title|look', 'Document look: print (default), typed, official or note', '::: Report 7|typed');
     addRow('- item', 'Bullet list', '- 3 torches');
     addRow('1. item', 'Numbered list', '1. First step');
     addRow('---', 'Page break (in Pages mode) or divider line', '---');

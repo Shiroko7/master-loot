@@ -5,7 +5,7 @@ import {
   type LootDocument,
 } from "./types";
 import { renderNewspaperDocument } from "./newspaperRender";
-import { renderMarkdownInto } from "./markdown";
+import { renderMarkdownInto, splitOutsideInserts } from "./markdown";
 
 /**
  * A line of 3+ dashes (`---`) forces a page/section break. Content often
@@ -88,8 +88,7 @@ export function renderDocument(
   // on content pasted from anywhere.
   const raw = doc.content.replace(/\r\n?/g, "\n");
   const content = raw.trim() ? raw : "(This page is blank.)";
-  const segments = content
-    .split(BREAK_LINE)
+  const segments = splitOutsideInserts(content, (line) => BREAK_LINE.test(line))
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
   if (segments.length === 0) segments.push("(This page is blank.)");

@@ -207,6 +207,126 @@
   border: 1px solid rgba(70, 50, 20, 0.2);
 }
 
+/*
+ * Framed document inserts (::: Title|look … :::): a separate sheet shown
+ * inside the page, set in its own typeface, never the page's handwriting.
+ * Dividing by --font-adjust undoes a script font's optical boost.
+ * box-decoration-break keeps the frame whole when a page break splits it.
+ */
+.md-insert {
+  --insert-rule: rgba(40, 32, 20, 0.35);
+  position: relative;
+  margin: 1.3em 0.3em;
+  padding: 1em 1.3em 0.8em;
+  background: #fbf8ef;
+  color: #1f1b15;
+  border: 1px solid rgba(60, 48, 30, 0.28);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(40, 28, 10, 0.16);
+  font-family: "IM Fell English", Georgia, "Times New Roman", serif;
+  font-size: calc(0.9em / var(--font-adjust, 1));
+  font-style: normal;
+  line-height: 1.45;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-shadow: none;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Specific enough to beat page styles such as the journal's ruled spacing. */
+.paper .md-insert > :last-child { margin-bottom: 0; }
+.paper .md-insert p { margin: 0 0 0.7em; text-indent: 0; }
+.paper .md-insert hr {
+  border: 0;
+  height: auto;
+  margin: 0.6em 0;
+  color: var(--insert-rule);
+}
+
+.md-insert .md-heading {
+  font-family: inherit;
+  font-size: 1.05em;
+  margin: 0.8em 0 0.3em;
+  border: 0;
+}
+
+.md-insert-title {
+  margin: 0 0 0.8em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--insert-rule);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.95em;
+  font-weight: 700;
+}
+
+/* Typed: a typewritten report on thin, slightly grey paper. */
+.md-insert-typed {
+  background: #f4f2ec;
+  font-family: "Courier New", Courier, monospace;
+  font-size: calc(0.8em / var(--font-adjust, 1));
+  line-height: 1.5;
+  text-align: left;
+  hyphens: manual;
+  color: #26241f;
+}
+.md-insert-typed .md-insert-title {
+  text-align: left;
+  letter-spacing: 0.05em;
+  border-bottom-style: dashed;
+}
+
+/* Official: a decree or warrant with a ruled double border. */
+.md-insert-official {
+  background: #f6efdc;
+  border: 3px double rgba(70, 50, 20, 0.6);
+  outline: 1px solid rgba(70, 50, 20, 0.25);
+  outline-offset: -8px;
+  padding: 1.3em 1.6em 1em;
+}
+.md-insert-official .md-insert-title {
+  font-family: Cinzel, "IM Fell English", serif;
+  font-weight: 600;
+  font-size: 1.05em;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.md-insert-official .md-insert-title::after {
+  content: "";
+  display: block;
+  width: 40%;
+  margin: 0.45em auto 0;
+  border-bottom: 3px double var(--insert-rule);
+}
+
+/* Note: a scrap of lined paper in a quick hand, pinned in slightly askew. */
+.md-insert-note {
+  background:
+    repeating-linear-gradient(transparent 0 calc(1.55em - 1px), rgba(70, 110, 160, 0.22) calc(1.55em - 1px) 1.55em)
+    #fbf6dc;
+  background-position: 0 1em; /* the top padding: rules sit under each line */
+  font-family: Caveat, "Segoe Print", cursive;
+  font-size: calc(1.1em / var(--font-adjust, 1));
+  line-height: 1.55em;
+  text-align: left;
+  hyphens: manual;
+  transform: rotate(-0.8deg);
+  max-width: 88%;
+  margin-left: auto;
+  margin-right: auto;
+}
+.paper .md-insert-note p { margin: 0; }
+.md-insert-note .md-insert-title {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 1.1em;
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
 /* Links */
 .paper-body .md-link {
   color: #1a4b7c;
@@ -1655,49 +1775,41 @@ mark.md-highlight {
   margin: 0 auto;
 }
 
-/* Aspect-ratio responsive constraints for hero banner slots */
-.newspaper-slot-hero .newspaper-figure.aspect-square {
-  max-width: 16em;
-}
-
-.newspaper-slot-hero .newspaper-figure.aspect-portrait {
-  max-width: 15em;
-}
-
-.newspaper-slot-hero .newspaper-figure.aspect-landscape {
-  max-width: 100%;
-  max-height: 16em;
-}
-
+/*
+ * Printed pictures, not framed ones: the picture takes the full width it is
+ * given, keeps its proportions, and the frame hugs it exactly so the print
+ * texture never spills into empty letterbox space.
+ */
 .newspaper-figure {
   margin: 0;
-  padding: 0.3em;
-  background: rgba(40, 30, 15, 0.03);
-  border: 1px solid rgba(40, 30, 15, 0.45);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   position: relative;
   box-sizing: border-box;
+  /* Lets a small picture scale up to the width it was given (100cqw). */
+  container-type: inline-size;
 }
 
 .newspaper-img-frame {
   position: relative;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
   line-height: 0;
-  background-color: #f1ebd8;
-  border: 1px solid rgba(40, 30, 15, 0.35);
-  box-sizing: border-box;
 }
 
+/*
+ * --img-cap is the height limit for the picture. Slots set a default
+ * (--img-default); layout code narrows one picture by setting --img-cap on
+ * it. The min-width scales small pictures up to the full width, or to the
+ * height limit, whichever comes first, so proportions never change.
+ */
 .newspaper-img {
   max-width: 100%;
   width: auto;
   height: auto;
-  max-height: 18em;
+  max-height: var(--img-cap, var(--img-default, 18em));
+  min-width: min(100cqw, calc(var(--img-cap, var(--img-default, 18em)) * var(--img-ratio, 0)));
   display: block;
-  object-fit: contain;
   transition: filter 0.3s ease, opacity 0.3s ease;
 }
 
@@ -1808,9 +1920,8 @@ mark.md-highlight {
   line-height: 1.25;
   text-align: center;
   color: #382e22;
-  padding: 0.4em 0.2em 0.1em;
-  border-top: 1px dotted rgba(40, 30, 15, 0.35);
-  margin-top: 0.3em;
+  padding: 0 0.2em;
+  margin-top: 0.35em;
 }
 
 .newspaper-figure.newspaper-img-broken {
@@ -1957,10 +2068,8 @@ mark.md-highlight {
 .newspaper-column > :first-child { margin-top: 0; }
 
 .newspaper-slot { margin: .45em 0 .65em; }
-.newspaper-slot-col .newspaper-img {
-  max-height: min(13.5em, var(--newspaper-image-height, 13.5em));
-}
-.newspaper-slot-hero .newspaper-img { max-height: calc(var(--newspaper-page-height) * .27); }
+.newspaper-slot-col { --img-default: var(--newspaper-image-height, 18em); }
+.newspaper-slot-hero { --img-default: calc(var(--newspaper-page-height) * .27); }
 .newspaper-slot-hero .newspaper-figure { max-width: 100%; }
 
 .newspaper-content-area.has-wide-pictures { gap: 0; }
@@ -1968,7 +2077,7 @@ mark.md-highlight {
 .layout-gazette-mosaic .newspaper-reading-region { gap: 1.1em; }
 .newspaper-slot-page { flex: none; width: 100%; margin: 0; padding: .5em 0; box-sizing: border-box; }
 .newspaper-slot-page .newspaper-figure { max-width: 100%; margin: 0 auto; }
-.newspaper-slot-page .newspaper-img { max-height: var(--newspaper-wide-image-height); }
+.newspaper-slot-page { --img-default: var(--newspaper-wide-image-height, 18em); }
 
 .newspaper-spreads-container { width: 100%; }
 .newspaper-spread {

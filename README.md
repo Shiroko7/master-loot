@@ -117,8 +117,13 @@ for each attachment: Column width, Full page width, or the saved layout's defaul
 Explicit widths take precedence over automatic hero slots. Full-width pictures
 span one page and divide the story into reading regions above and below them;
 image proportions and attachment order survive pagination and resizing.
-For exact story anchors, use `![Caption|page](url)` or
-`![Caption|column|engraving](url)` directly in the content.
+Pictures in the text sit in one column by default; `|wide` (or `|page`) spans
+all columns. For exact story anchors, use `![Caption|wide](url)` or
+`![Caption|column|engraving](url)` directly in the content. Add `|auto`
+(`![Caption|auto](url)`) to keep a picture in its story without anchoring it:
+the layout places it like an attachment (lead photo under the headline, or
+spread between the story's paragraphs). The editor's 🦉 From Owlbear button
+inserts newspaper pictures with `|auto`.
 
 ## Deploy to Netlify
 

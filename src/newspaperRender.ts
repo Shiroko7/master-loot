@@ -8,7 +8,13 @@ import {
   type NewspaperLayout,
   type NewspaperPrintFilter,
 } from "./types";
-import { renderInlineMarkdown, normalizeImageUrl } from "./markdown";
+import {
+  renderInlineMarkdown,
+  normalizeImageUrl,
+  createInsert,
+  splitOutsideInserts,
+  INSERT_FENCE,
+} from "./markdown";
 import { fillNewspaperColumn } from "./newspaperPagination";
 import { resolveNewspaperHeading } from "./newspaperHeading";
 import { fillNewspaperWidePage } from "./newspaperWidePagination";
@@ -31,6 +37,8 @@ export type NewspaperFlowBlock =
   | { kind: "highlight"; text: string; label?: string }
   | { kind: "crosshead"; text: string }
   | { kind: "note"; text: string }
+  /** `::: Title|look` … `:::`: a framed document printed within the story. */
+  | { kind: "insert"; header: string; text: string }
   | { kind: "image"; image: NewspaperImage };
 
 export interface ParsedNewspaperPage {
@@ -55,8 +63,8 @@ export function resolveNewspaperLayout(preferred?: NewspaperLayout): Exclude<New
  */
 export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
   const raw = doc.content.replace(/\r\n?/g, "\n");
-  let rawSegments = raw
-    .split(BREAK_LINE)
+  // A `---` or `# Heading` inside a `:::` insert belongs to the insert.
+  let rawSegments = splitOutsideInserts(raw, (line) => BREAK_LINE.test(line))
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
@@ -68,7 +76,8 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
   // after fonts, images and the actual page dimensions can be measured.
   if (doc.layout !== "flow") {
     rawSegments = rawSegments.flatMap((segment) =>
-      segment.split(/\n(?=# [^\n]+)/).map((part) => part.trim()).filter(Boolean),
+      splitOutsideInserts(segment, (line) => /^# \S/.test(line), true)
+        .map((part) => part.trim()).filter(Boolean),
     );
   }
 
@@ -115,8 +124,28 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
       }
     };
 
+    let insert: { header: string; lines: string[] } | undefined;
+    const flushInsert = () => {
+      if (!insert) return;
+      blocks.push({ kind: "insert", header: insert.header, text: insert.lines.join("\n") });
+      insert = undefined;
+    };
+
     for (const rawLine of lines) {
       const line = rawLine.trim();
+      // Inside an insert every line (blank ones too) is its document's own
+      // Markdown, until a bare `:::` closes it.
+      if (insert) {
+        if (line === ":::") flushInsert();
+        else insert.lines.push(rawLine);
+        continue;
+      }
+      const fence = INSERT_FENCE.exec(line);
+      if (fence) {
+        flushParagraph();
+        insert = { header: fence[1], lines: [] };
+        continue;
+      }
       if (!line) {
         flushParagraph();
         continue;
@@ -126,19 +155,23 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
         for (const part of parts) {
           const m = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(part.trim());
           if (m) {
-            flushParagraph();
             let caption = m[1] ? m[1].trim() : undefined;
             const url = m[2].trim();
             let filter: NewspaperPrintFilter | undefined;
             let width: NewspaperImage["width"];
+            let auto = false;
             if (caption && caption.includes("|")) {
               const parts = caption.split("|");
               while (parts.length > 1) {
                 const candidate = parts[parts.length - 1].trim().toLowerCase();
                 if (["halftone", "engraving", "sepia", "color-press", "raw"].includes(candidate)) {
                   filter = candidate as NewspaperPrintFilter;
-                } else if (candidate === "page" || candidate === "column") {
-                  width = candidate;
+                } else if (candidate === "page" || candidate === "wide" || candidate === "column") {
+                  // `|wide` reads better than `|page` (which means a whole-page
+                  // picture in other document styles); both span every column.
+                  width = candidate === "column" ? "column" : "page";
+                } else if (candidate === "auto") {
+                  auto = true;
                 } else break;
                 parts.pop();
               }
@@ -151,7 +184,14 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
               width,
             };
             pageImages.push(imgObj);
-            blocks.push({ kind: "image", image: imgObj });
+            // `|auto` pictures belong to this story but not to a spot in it:
+            // the layout places them like attached pictures (lead photo under
+            // the headline, or spread between the story's blocks), and the
+            // sentence around them reads on uninterrupted.
+            if (!auto) {
+              flushParagraph();
+              blocks.push({ kind: "image", image: imgObj });
+            }
           } else if (part.trim()) {
             currentParagraphLines.push(part.trim());
           }
@@ -238,6 +278,7 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
       currentParagraphLines.push(rawLine);
     }
     flushParagraph();
+    flushInsert(); // an unclosed insert runs to the end of its story
 
     if (paragraphs.length === 0 && blocks.length === 0) {
       paragraphs.push("(Story continues on the back page.)");
@@ -330,7 +371,7 @@ function createPictureSlot(
     figure.dataset.aspect = aspect;
     figure.classList.remove("aspect-unknown", "aspect-landscape", "aspect-portrait", "aspect-square");
     figure.classList.add(`aspect-${aspect}`);
-    figure.style.setProperty("--img-ratio", String(ratio.toFixed(2)));
+    figure.style.setProperty("--img-ratio", String(ratio.toFixed(4)));
   };
 
   imgEl.onload = () => { applyAspect(); onSizeChange(); };
@@ -486,6 +527,8 @@ function renderFlowBlock(
       return createCrosshead(block.text);
     case "note":
       return createNote(block.text);
+    case "insert":
+      return createInsert(block.header, block.text);
     case "image":
       return createPictureSlot(block.image, docFilter, "newspaper-slot-col");
   }
@@ -595,8 +638,8 @@ const activeRenderers = new WeakMap<HTMLElement, () => void>();
 
 /** Add unattached pictures between story blocks; inline pictures keep their anchors. */
 function storyBlocks(page: ParsedNewspaperPage): NewspaperFlowBlock[] {
-  const inlineUrls = new Set(page.blocks.filter((block) => block.kind === "image").map((block) => block.image.url));
-  const pictures = page.images.filter((img) => !inlineUrls.has(img.url));
+  const anchored = new Set(page.blocks.flatMap((block) => block.kind === "image" ? [block.image] : []));
+  const pictures = page.images.filter((img) => !anchored.has(img));
   const blocks: NewspaperFlowBlock[] = [];
   for (let index = 0; index <= page.blocks.length; index++) {
     pictures.forEach((image, imageIndex) => {
@@ -761,15 +804,14 @@ export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument): R
           continue;
         }
         if (page.classList.contains("layout-hero") && firstInSection) {
-          // Only unattached photos may become a lead picture. Markdown photos
-          // stay at their explicit position in the story.
-          const inlineUrls = new Set(section.blocks.filter((block) => block.kind === "image").map((block) => block.image.url));
+          // Only unattached (or `|auto`) photos may become a lead picture.
+          // Anchored Markdown photos stay at their explicit position in the story.
           const firstPicture = queue.findIndex(element => element.querySelector("img"));
           // A later default picture must never jump ahead of an earlier
           // column-width or inline picture just to fill the hero slot.
           const candidate = queue[firstPicture];
           const heroIndex = candidate && !candidate.dataset.imageWidth &&
-            !inlineUrls.has(candidate.querySelector("img")!.getAttribute("src") ?? "") ? firstPicture : -1;
+            !candidate.dataset.inlineImage ? firstPicture : -1;
           if (heroIndex >= 0) {
             const hero = queue[heroIndex];
             hero.classList.replace("newspaper-slot-col", "newspaper-slot-hero");
@@ -779,7 +821,7 @@ export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument): R
             const reserve = bodyLine * 4;
             const available = image.clientHeight + columns[0].clientHeight - reserve;
             if (available >= bodyLine * 2) {
-              image.style.maxHeight = `${Math.min(image.clientHeight, available)}px`;
+              image.style.setProperty("--img-cap", `${Math.min(image.clientHeight, available)}px`);
               queue.splice(heroIndex, 1);
             } else {
               // A tall heading leaves no room for a useful lead photo. Keep
@@ -819,7 +861,7 @@ export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument): R
         for (const column of columns) {
           // The image cap includes its actual caption/frame in the measured
           // block. This variable also limits portrait photographs on short pages.
-          column.style.setProperty("--newspaper-image-height", `${Math.max(32, column.clientHeight * 0.42)}px`);
+          column.style.setProperty("--newspaper-image-height", `${Math.max(32, column.clientHeight * 0.6)}px`);
           fillNewspaperColumn(column, queue);
         }
         firstInSection = false;

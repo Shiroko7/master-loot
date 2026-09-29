@@ -362,6 +362,69 @@ export function createFigure(
  */
 const STANDALONE_IMAGE = /^!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))+)\)$/;
 
+export type InsertLook = "print" | "typed" | "official" | "note";
+const INSERT_LOOKS: readonly string[] = ["print", "typed", "official", "note"];
+
+/** `:::` alone closes an insert; `::: Title|look` (or bare `:::`) opens one. */
+export const INSERT_FENCE = /^:::(?!:)\s*(.*)$/;
+
+/**
+ * Splits a document on page-break lines, except inside `:::` inserts: a
+ * `---` there is a divider line of the inserted document, not a new page.
+ * With `keepBreak` the break line starts the next segment instead of being
+ * dropped (newspapers start a new story at each `# Headline`).
+ */
+export function splitOutsideInserts(
+  text: string,
+  isBreak: (line: string) => boolean,
+  keepBreak = false,
+): string[] {
+  const segments: string[] = [];
+  let current: string[] = [];
+  let inInsert = false;
+  for (const line of text.split("\n")) {
+    const fence = INSERT_FENCE.exec(line.trim());
+    // Inside an insert only a bare `:::` closes it.
+    if (fence) inInsert = inInsert ? fence[1].trim() !== "" : true;
+    if (!inInsert && !fence && isBreak(line)) {
+      segments.push(current.join("\n"));
+      current = keepBreak ? [line] : [];
+    } else current.push(line);
+  }
+  segments.push(current.join("\n"));
+  return segments;
+}
+
+/**
+ * A framed document shown inside the page (a printed notice, a typed
+ * report, an official decree, a slip of paper): its own sheet, typeface and
+ * margins, set apart from the surrounding handwriting. Unlike a quote it
+ * holds whole blocks: paragraphs, lists, headings, pictures.
+ */
+export function createInsert(header: string, body: string): HTMLElement {
+  const parts = header.split("|");
+  let look: InsertLook = "print";
+  while (parts.length > 1 && INSERT_LOOKS.includes(parts[parts.length - 1].trim().toLowerCase())) {
+    look = parts.pop()!.trim().toLowerCase() as InsertLook;
+  }
+  // `::: typed` alone sets the look with no title; a capitalised `::: Note`
+  // stays a title.
+  if (parts.length === 1 && INSERT_LOOKS.includes(parts[0].trim())) {
+    look = parts.pop()!.trim() as InsertLook;
+  }
+  const title = parts.join("|").trim();
+  const insert = document.createElement("section");
+  insert.className = `md-insert md-insert-${look}`;
+  if (title) {
+    const heading = document.createElement("header");
+    heading.className = "md-insert-title";
+    heading.append(renderInlineMarkdown(title));
+    insert.append(heading);
+  }
+  renderMarkdownInto(insert, body);
+  return insert;
+}
+
 function parseMarkdownTable(lines: string[]): HTMLElement | null {
   if (lines.length < 2) return null;
 
@@ -467,7 +530,21 @@ export function renderMarkdownInto(
       continue;
     }
 
-    // 2. Headings: #, ##, ###, ####, #####, ######
+    // 2. Framed document insert: ::: Title|look … :::
+    const insertMatch = INSERT_FENCE.exec(trimmed);
+    if (insertMatch) {
+      const bodyLines: string[] = [];
+      i++;
+      while (i < rawLines.length && rawLines[i].trim() !== ":::") {
+        bodyLines.push(rawLines[i]);
+        i++;
+      }
+      i++; // skip closing ::: (an unclosed insert runs to the end)
+      target.append(createInsert(insertMatch[1], bodyLines.join("\n")));
+      continue;
+    }
+
+    // 2b. Headings: #, ##, ###, ####, #####, ######
     const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
     if (headingMatch) {
       const level = headingMatch[1].length;
@@ -590,6 +667,7 @@ export function renderMarkdownInto(
       i < rawLines.length &&
       rawLines[i].trim().length > 0 &&
       !rawLines[i].trim().startsWith("```") &&
+      !INSERT_FENCE.test(rawLines[i].trim()) &&
       !/^(#{1,6})\s+/.test(rawLines[i].trim()) &&
       !HR_REGEX.test(rawLines[i].trim()) &&
       !rawLines[i].trim().startsWith(">") &&
