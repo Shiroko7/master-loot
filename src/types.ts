@@ -185,6 +185,8 @@ export interface LootItem {
    * The item's description is shown under it.
    */
   imageUrl?: string;
+  /** When the item was first saved into loot; absent on older saves. */
+  addedAt?: number;
 }
 
 export interface LootGroup {
@@ -561,13 +563,22 @@ export function isLootContainer(value: unknown): value is LootContainer {
   );
 }
 
+/**
+ * Short random id for new loot items: 8 characters instead of a 36-byte
+ * UUID, which adds up in shared metadata. Unique enough within a scene.
+ */
+export function newItemId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_");
+}
+
 export function createContainer(name: string): LootContainer {
   return { enabled: false, name, items: [], folders: [], updatedAt: Date.now() };
 }
 
 export function createLootItem(): LootItem {
   return {
-    id: crypto.randomUUID(),
+    id: newItemId(),
     kind: "item",
     name: "New item",
     quantity: 1,
@@ -578,7 +589,7 @@ export function createLootItem(): LootItem {
 
 export function createCurrencyItem(): LootItem {
   return {
-    id: crypto.randomUUID(),
+    id: newItemId(),
     kind: "currency",
     name: "Coins",
     quantity: 1,
@@ -590,7 +601,7 @@ export function createCurrencyItem(): LootItem {
 
 export function createIdCardItem(): LootItem {
   return {
-    id: crypto.randomUUID(),
+    id: newItemId(),
     kind: "idcard",
     name: "Identification papers",
     quantity: 1,
@@ -602,7 +613,7 @@ export function createIdCardItem(): LootItem {
 
 export function createPictureItem(): LootItem {
   return {
-    id: crypto.randomUUID(),
+    id: newItemId(),
     kind: "picture",
     name: "Picture",
     quantity: 1,
@@ -615,7 +626,7 @@ export function createPictureItem(): LootItem {
 export function createLootDocument(style: DocumentStyle = "letter"): LootItem {
   const isNewspaper = style === "newspaper";
   return {
-    id: crypto.randomUUID(),
+    id: newItemId(),
     kind: "document",
     name: isNewspaper ? "Newspaper edition" : "Crumpled letter",
     quantity: 1,

@@ -21,6 +21,31 @@ import {
   type BadgeCorner,
 } from "./loot";
 import { getSavedWindowSize, setupWindowResizer } from "./windowResizer";
+import { confirmDialog } from "./confirmDialog";
+import { LootLogService } from "./inventory/LootLogService";
+import {
+  ROOM_METADATA_BUDGET_BYTES,
+  SCENE_LOOT_BUDGET_BYTES,
+  downloadArchive,
+  downloadContainers,
+  downloadLootLog,
+  formatBytes,
+  itemArchiveEntry,
+  measureRoom,
+  measureScene,
+  parseArchive,
+  removeContainers,
+  removeItems,
+  restoreContainers,
+  usageLevel,
+  type ArchivedContainer,
+  type ContainerUsage,
+  type ItemUsage,
+  type StorageWarning,
+  type UsageLevel,
+  storageWarning,
+  CONTAINER_BUDGET_BYTES,
+} from "./metadataArchive";
 
 const app = document.getElementById("app")!;
 let role: "GM" | "PLAYER" = "PLAYER";
@@ -41,6 +66,8 @@ type ActionTab = "loot" | "players";
 const TAB_KEY = "master-loot:action-tab";
 let activeTab: ActionTab = readTab();
 let lastItems: Item[] = [];
+let lastSceneMeta: Metadata = {};
+let lastRoomMeta: Metadata = {};
 let myId = "";
 let myName = "You";
 let partyPlayers: Player[] = [];
@@ -214,6 +241,407 @@ function buildSettings(): HTMLElement {
   return overlay;
 }
 
+// --- storage overlay ----------------------------------------------------------
+
+type StorageView = "containers" | "items";
+type StorageSort = "size" | "date" | "name";
+
+let storageEl: HTMLElement | null = null;
+/** Survives re-renders so a result message isn't wiped by the next scene event. */
+let storageStatus = "";
+let storageView: StorageView = "containers";
+let storageSort: StorageSort = "size";
+
+const LEVEL_TEXT: Record<UsageLevel, string> = {
+  ok: "",
+  warn: "Getting full — consider archiving some loot.",
+  over: "Over budget — archive some loot to free space.",
+};
+
+function toggleStorage(): void {
+  if (storageEl) {
+    storageEl.remove();
+    storageEl = null;
+    return;
+  }
+  storageStatus = "";
+  storageEl = el("div", "settings-overlay");
+  app.append(storageEl);
+  void renderStorage();
+}
+
+function setStorageStatus(text: string): void {
+  storageStatus = text;
+  void renderStorage();
+}
+
+function meterEl(parts: { bytes: number; cls: string; label: string }[], budget: number): HTMLElement {
+  const meter = el("div", "storage-meter");
+  for (const part of parts) {
+    const segment = el("div", `storage-segment ${part.cls}`);
+    segment.style.width = `${Math.min(100, (part.bytes / budget) * 100)}%`;
+    segment.title = `${part.label}: ${formatBytes(part.bytes)}`;
+    meter.append(segment);
+  }
+  return meter;
+}
+
+function levelHint(text: string, level: UsageLevel): HTMLElement {
+  const hint = el("div", `setting-hint storage-level-${level}`);
+  hint.textContent = level === "ok" ? text : `${text} ${LEVEL_TEXT[level]}`;
+  return hint;
+}
+
+function formatDate(time: number | undefined): string {
+  return time ? new Date(time).toLocaleDateString() : "—";
+}
+
+function sortBy<T>(list: T[], key: (entry: T) => { bytes: number; date: number; name: string }): T[] {
+  return [...list].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (storageSort === "size") return kb.bytes - ka.bytes;
+    // Oldest first: those are the likeliest to be done with.
+    if (storageSort === "date") return ka.date - kb.date;
+    return ka.name.localeCompare(kb.name);
+  });
+}
+
+async function renderStorage(): Promise<void> {
+  const overlay = storageEl;
+  if (!overlay) return;
+  const ready = await OBR.scene.isReady();
+  const [roomMeta, items, sceneMeta] = await Promise.all([
+    OBR.room.getMetadata(),
+    ready ? OBR.scene.items.getItems() : Promise.resolve([] as Item[]),
+    ready ? OBR.scene.getMetadata() : Promise.resolve({} as Metadata),
+  ]);
+  if (overlay !== storageEl) return;
+  const room = measureRoom(roomMeta);
+  const scene = measureScene(items, sceneMeta);
+
+  const panel = el("div", "panel");
+  const header = el("div", "panel-header");
+  const title = el("h1", "panel-title");
+  title.textContent = "Storage";
+  const close = el("button", "btn-icon");
+  close.textContent = "✕";
+  close.ariaLabel = "Close storage";
+  close.onclick = toggleStorage;
+  header.append(title, close);
+  const body = el("div", "panel-body settings-body");
+
+  const intro = el("div", "setting-hint");
+  intro.textContent =
+    "Loot is stored on its tokens in Owlbear's shared scene data, synced to everyone — " +
+    "not on each player's computer — and that space is limited.";
+  body.append(intro);
+
+  // Scene: loot containers live on their tokens' item metadata.
+  const sceneHeading = el("div", "storage-heading");
+  sceneHeading.textContent = "Loot in this scene";
+  const sceneLevel = usageLevel(scene.total, SCENE_LOOT_BUDGET_BYTES);
+  body.append(
+    sceneHeading,
+    meterEl([{ bytes: scene.total, cls: `seg-loot seg-${sceneLevel}`, label: "Loot" }], SCENE_LOOT_BUDGET_BYTES),
+    levelHint(
+      `${formatBytes(scene.total)} of ${formatBytes(SCENE_LOOT_BUDGET_BYTES)} used by ` +
+        `${scene.containers.length} container${scene.containers.length === 1 ? "" : "s"}.`,
+      sceneLevel,
+    ),
+  );
+
+  const controls = el("div", "setting-row storage-controls");
+  const viewSelect = el("select");
+  for (const [value, label] of [["containers", "Containers"], ["items", "Items"]] as const) {
+    const option = el("option");
+    option.value = value;
+    option.textContent = label;
+    option.selected = storageView === value;
+    viewSelect.append(option);
+  }
+  viewSelect.onchange = () => {
+    storageView = viewSelect.value as StorageView;
+    void renderStorage();
+  };
+  const sortSelect = el("select");
+  for (const [value, label] of [["size", "Largest first"], ["date", "Oldest first"], ["name", "By name"]] as const) {
+    const option = el("option");
+    option.value = value;
+    option.textContent = label;
+    option.selected = storageSort === value;
+    sortSelect.append(option);
+  }
+  sortSelect.onchange = () => {
+    storageSort = sortSelect.value as StorageSort;
+    void renderStorage();
+  };
+  controls.append(viewSelect, sortSelect);
+  body.append(controls);
+
+  const list = el("div", "storage-list");
+  if (storageView === "containers") {
+    const sorted = sortBy(scene.containers, (c) => ({
+      bytes: c.bytes,
+      date: c.loot.updatedAt,
+      name: c.loot.name || c.tokenName,
+    }));
+    for (const container of sorted) list.append(containerStorageRow(container));
+  } else {
+    const byToken = new Map(scene.containers.map((c) => [c.tokenId, c]));
+    const sorted = sortBy(scene.items, (i) => ({
+      bytes: i.bytes,
+      date: i.item.addedAt ?? 0,
+      name: i.item.name,
+    }));
+    for (const usage of sorted) list.append(itemStorageRow(usage, byToken.get(usage.tokenId)!));
+  }
+  if (scene.containers.length === 0) {
+    const note = el("div", "setting-hint");
+    note.textContent = "No loot containers in this scene.";
+    list.append(note);
+  }
+  body.append(list);
+
+  const bulk = el("div", "setting-row");
+  const downloadAll = el("button", "btn");
+  downloadAll.textContent = "Download all";
+  downloadAll.disabled = scene.containers.length === 0;
+  downloadAll.onclick = () => {
+    downloadContainers(scene.containers);
+    setStorageStatus(`Downloaded ${scene.containers.length} containers.`);
+  };
+  const upload = el("button", "btn btn-gold");
+  upload.textContent = "Upload archive…";
+  const fileInput = el("input");
+  fileInput.type = "file";
+  fileInput.accept = ".json,application/json";
+  fileInput.hidden = true;
+  fileInput.onchange = () => {
+    const file = fileInput.files?.[0];
+    if (file) void uploadArchive(file, items);
+  };
+  upload.onclick = () => fileInput.click();
+  bulk.append(downloadAll, upload, fileInput);
+  const uploadHint = el("div", "setting-hint");
+  uploadHint.textContent =
+    "Uploads go back onto their original token. If it's gone, select another " +
+    "token first (one container per file).";
+  body.append(bulk, uploadHint);
+
+  // Room metadata: the shared ~16 kB budget.
+  const roomHeading = el("div", "storage-heading");
+  roomHeading.textContent = "Room data (shared by all extensions)";
+  const roomLevel = usageLevel(room.total, ROOM_METADATA_BUDGET_BYTES);
+  body.append(
+    roomHeading,
+    meterEl(
+      [
+        { bytes: room.lootLog, cls: "seg-log", label: "Loot log" },
+        { bytes: room.settings, cls: "seg-settings", label: "Master Loot settings" },
+        { bytes: room.others, cls: "seg-others", label: "Other extensions" },
+      ],
+      ROOM_METADATA_BUDGET_BYTES,
+    ),
+    levelHint(
+      `${formatBytes(room.total)} of ${formatBytes(ROOM_METADATA_BUDGET_BYTES)} used — ` +
+        `loot log ${formatBytes(room.lootLog)}, settings ${formatBytes(room.settings)}, ` +
+        `other extensions ${formatBytes(room.others)}.`,
+      roomLevel,
+    ),
+  );
+
+  const logRow = el("div", "setting-row");
+  const logDownload = el("button", "btn");
+  logDownload.textContent = "Download log";
+  logDownload.onclick = () =>
+    void downloadLootLog().then((count) => setStorageStatus(`Downloaded ${count} log entries.`));
+  const logClear = el("button", "btn btn-danger");
+  logClear.textContent = "Download & clear log";
+  logClear.disabled = room.lootLog <= 32;
+  logClear.onclick = () =>
+    void (async () => {
+      const ok = await confirmDialog({
+        title: "Clear the loot log?",
+        message: "The log is downloaded as a file first, then removed from the room for everyone.",
+        confirmLabel: "Download & clear",
+      });
+      if (!ok) return;
+      try {
+        const count = await downloadLootLog();
+        await LootLogService.clearLogs();
+        setStorageStatus(`Saved and cleared ${count} log entries.`);
+      } catch (error) {
+        console.error("Master Loot: failed to clear the loot log", error);
+        setStorageStatus("Could not clear the loot log.");
+      }
+    })();
+  logRow.append(logDownload, logClear);
+
+  const status = el("div", "setting-status");
+  status.textContent = storageStatus;
+  body.append(logRow, status);
+
+  panel.append(header, body);
+  overlay.replaceChildren(panel);
+}
+
+function storageRow(
+  nameText: string,
+  metaText: string,
+  onDownload: () => void,
+  archive: { title: string; message: string; run: () => Promise<string> },
+): HTMLElement {
+  const row = el("div", "container-row");
+  const info = el("div", "info");
+  const name = el("div", "name");
+  name.textContent = nameText;
+  const meta = el("div", "meta");
+  meta.textContent = metaText;
+  info.append(name, meta);
+
+  const download = el("button", "btn");
+  download.textContent = "⬇";
+  download.title = "Download a copy (keeps it in the scene)";
+  download.ariaLabel = download.title;
+  download.onclick = onDownload;
+
+  const remove = el("button", "btn btn-danger");
+  remove.textContent = "Archive";
+  remove.title = "Download, then remove it from the scene to free space";
+  remove.onclick = () =>
+    void (async () => {
+      const ok = await confirmDialog({
+        title: archive.title,
+        message: archive.message,
+        confirmLabel: "Download & remove",
+      });
+      if (!ok) return;
+      try {
+        setStorageStatus(await archive.run());
+      } catch (error) {
+        console.error("Master Loot: failed to archive", error);
+        setStorageStatus("Could not remove it from the scene.");
+      }
+    })();
+
+  row.append(info, download, remove);
+  return row;
+}
+
+function containerStorageRow(container: ContainerUsage): HTMLElement {
+  const label = container.loot.name || container.tokenName;
+  const count = container.loot.items.length;
+  const level = usageLevel(container.bytes, CONTAINER_BUDGET_BYTES);
+  const row = storageRow(
+    label,
+    `${formatBytes(container.bytes)} · ${count} item${count === 1 ? "" : "s"} · ` +
+      `edited ${formatDate(container.loot.updatedAt)}` +
+      (level === "ok" ? "" : level === "warn" ? " · large" : " · too large"),
+    () => downloadContainers([container]),
+    {
+      title: `Archive “${label}”?`,
+      message:
+        "The whole container is downloaded as a file, then removed from its token " +
+        "(players lose access). Upload the file later to restore it.",
+      run: async () => {
+        downloadContainers([container]);
+        await removeContainers([container.tokenId]);
+        return `Archived “${label}” — freed ${formatBytes(container.bytes)}.`;
+      },
+    },
+  );
+  row.classList.add(`storage-level-${level}`);
+  return row;
+}
+
+function itemStorageRow(usage: ItemUsage, container: ContainerUsage): HTMLElement {
+  const label = usage.item.name || "Untitled";
+  const entry = itemArchiveEntry(usage, container);
+  const fileLabel = `${usage.containerName}-${label}`;
+  return storageRow(
+    `${usage.item.icon} ${label}`,
+    `${formatBytes(usage.bytes)} · in ${usage.containerName} · added ${formatDate(usage.item.addedAt)}`,
+    () => downloadArchive([entry], fileLabel),
+    {
+      title: `Archive “${label}”?`,
+      message:
+        `The item is downloaded as a file, then removed from “${usage.containerName}”. ` +
+        "Upload the file later to put it back.",
+      run: async () => {
+        downloadArchive([entry], fileLabel);
+        await removeItems(usage.tokenId, [usage.item.id]);
+        return `Archived “${label}” — freed ${formatBytes(usage.bytes)}.`;
+      },
+    },
+  );
+}
+
+/**
+ * Puts archived loot back: onto its original token when it is in this
+ * scene, otherwise (single-container archives) onto the selected token.
+ */
+async function uploadArchive(file: File, items: Item[]): Promise<void> {
+  let archived: ArchivedContainer[];
+  try {
+    archived = parseArchive(await file.text());
+  } catch (error) {
+    setStorageStatus((error as Error).message);
+    return;
+  }
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const selection = (await OBR.player.getSelection()) ?? [];
+  const fallback = archived.length === 1 && selection.length === 1 ? selection[0] : undefined;
+  const targets = new Map<string, ArchivedContainer>();
+  let missing = 0;
+  for (const entry of archived) {
+    const tokenId = byId.has(entry.tokenId) ? entry.tokenId : fallback;
+    if (!tokenId || !byId.has(tokenId)) {
+      missing += 1;
+      continue;
+    }
+    const existing = targets.get(tokenId);
+    targets.set(
+      tokenId,
+      existing?.partial && entry.partial
+        ? { ...existing, loot: { ...existing.loot, items: [...existing.loot.items, ...entry.loot.items] } }
+        : entry,
+    );
+  }
+
+  const overwrites = [...targets].filter(
+    ([id, entry]) => !entry.partial && getLoot(byId.get(id)!),
+  ).length;
+  if (overwrites > 0) {
+    const ok = await confirmDialog({
+      title: "Replace existing loot?",
+      message: `${overwrites} token${overwrites === 1 ? " already has" : "s already have"} loot. Restoring the archived container replaces it.`,
+      confirmLabel: "Replace",
+    });
+    if (!ok) return;
+  }
+
+  try {
+    await restoreContainers(targets);
+  } catch (error) {
+    console.error("Master Loot: failed to restore archive", error);
+    setStorageStatus("Could not write the loot back — the scene may be out of space.");
+    return;
+  }
+  const parts = [`Restored ${targets.size} upload${targets.size === 1 ? "" : "s"}.`];
+  if (missing > 0) {
+    parts.push(
+      `${missing} skipped: token not in this scene` +
+        (archived.length === 1 ? " — select a token and upload again." : "."),
+    );
+  }
+  setStorageStatus(parts.join(" "));
+}
+
+function currentWarning(): StorageWarning {
+  return storageWarning(measureRoom(lastRoomMeta), measureScene(lastItems, lastSceneMeta));
+}
+
 function shell(): { panel: HTMLElement; body: HTMLElement } {
   mainEl.innerHTML = "";
   const panel = el("div", "panel");
@@ -243,7 +671,15 @@ function shell(): { panel: HTMLElement; body: HTMLElement } {
     gear.title = "Master Loot settings";
     gear.ariaLabel = "Master Loot settings";
     gear.onclick = toggleSettings;
-    actions.append(gear);
+    const warning = currentWarning();
+    const level = warning.level;
+    const disk = el("button", "btn-icon");
+    disk.textContent = level === "ok" ? "💾" : "⚠";
+    disk.classList.toggle("storage-alert", level !== "ok");
+    disk.title = level === "ok" ? "Storage — free up space" : `Storage: ${warning.subject} — ${LEVEL_TEXT[level]}`;
+    disk.ariaLabel = disk.title;
+    disk.onclick = toggleStorage;
+    actions.append(disk, gear);
   }
   header.append(actions);
 
@@ -316,12 +752,24 @@ async function toggleTakeLock(tokenId: string, takeable: boolean): Promise<void>
 
 function render(items: Item[]): void {
   lastItems = items;
+  void renderStorage();
   if (draggingRow) {
     deferredItems = items;
     return;
   }
   const { panel, body } = shell();
   body.append(buildTabs());
+  const warning = role === "GM" ? currentWarning() : undefined;
+  if (warning && warning.level !== "ok") {
+    const banner = el("div", `storage-banner storage-level-${warning.level}`);
+    const text = el("span");
+    text.textContent = `Storage: ${warning.subject}. ${LEVEL_TEXT[warning.level]}`;
+    const open = el("button", "btn btn-gold");
+    open.textContent = "Free up space";
+    open.onclick = toggleStorage;
+    banner.append(text, open);
+    body.append(banner);
+  }
   if (activeTab === "players") {
     renderPlayers(panel, body);
     return;
@@ -481,10 +929,12 @@ async function refresh(ready: boolean): Promise<void> {
   unsubscribeMeta?.();
   unsubscribeMeta = undefined;
   if (ready) {
-    containerOrder = readOrder(await OBR.scene.getMetadata());
+    lastSceneMeta = await OBR.scene.getMetadata();
+    containerOrder = readOrder(lastSceneMeta);
     render(await OBR.scene.items.getItems());
     unsubscribeItems = OBR.scene.items.onChange(render);
     unsubscribeMeta = OBR.scene.onMetadataChange((metadata) => {
+      lastSceneMeta = metadata;
       containerOrder = readOrder(metadata);
       void OBR.scene.items.getItems().then(render);
     });
@@ -524,7 +974,12 @@ OBR.onReady(async () => {
     getBadgeImageSetting(),
   ]);
   // Keep the settings in sync if changed from another GM window.
-  OBR.room.onMetadataChange(() => {
+  lastRoomMeta = await OBR.room.getMetadata();
+  OBR.room.onMetadataChange((metadata) => {
+    const warnedBefore = currentWarning().level;
+    lastRoomMeta = metadata;
+    if (currentWarning().level !== warnedBefore) render(lastItems);
+    void renderStorage();
     void getBadgeImageSetting().then((image) => {
       badgeImage = image;
     });

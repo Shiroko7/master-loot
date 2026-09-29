@@ -2,18 +2,42 @@ import OBR from "@owlbear-rodeo/sdk";
 import { LOOT_LOG_KEY, MAX_LOOT_LOG_METADATA_BYTES } from "../constants";
 import type { LootLogEntry } from "../modules/inventory/UserInventoryModel";
 import { NetworkProtocol } from "./NetworkProtocol";
+import { packValue, unpackValue } from "../metadataCodec";
 
 /** Newest-first entries, keeping as many as fit under maxBytes (always keeps at least the newest one). */
-function trimToByteBudget(entries: LootLogEntry[], maxBytes: number): LootLogEntry[] {
-  const kept: LootLogEntry[] = [];
-  let size = 2; // "[" + "]"
-  for (const entry of entries) {
-    const entrySize = new TextEncoder().encode(JSON.stringify(entry)).length + 1; // +1 for separator
-    if (kept.length > 0 && size + entrySize > maxBytes) break;
-    size += entrySize;
-    kept.push(entry);
+/**
+ * Stored form of the log for room metadata: newest entries that fit
+ * `maxBytes` once packed. Item snapshots stay out — they can be a whole
+ * document each; live sessions still get them over the broadcast channel,
+ * and undo falls back to the item in the player's inventory.
+ */
+function packForRoom(entries: LootLogEntry[], maxBytes: number): unknown {
+  const slim = entries.map(({ itemSnapshot: _snapshot, ...entry }) => entry);
+  const fits = (count: number) => {
+    const packed = packValue(slim.slice(0, count));
+    return { packed, ok: new TextEncoder().encode(JSON.stringify(packed)).length <= maxBytes };
+  };
+  // Binary search the largest newest-first prefix that fits.
+  let low = 0;
+  let high = slim.length;
+  let best = fits(0).packed;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const attempt = fits(mid);
+    if (attempt.ok) {
+      low = mid;
+      best = attempt.packed;
+    } else {
+      high = mid - 1;
+    }
   }
-  return kept;
+  return best;
+}
+
+function readStoredLogs(raw: unknown): LootLogEntry[] {
+  const value = unpackValue(raw);
+  // Copies: decoded values are frozen, and undo/redo edit entries in place.
+  return Array.isArray(value) ? structuredClone(value as LootLogEntry[]) : [];
 }
 
 export class LootLogService {
@@ -92,8 +116,8 @@ export class LootLogService {
     try {
       const meta = await OBR.room.getMetadata();
       const raw = meta[LOOT_LOG_KEY];
-      if (Array.isArray(raw)) {
-        this.mergeCachedLogs(raw as LootLogEntry[]);
+      if (raw !== undefined) {
+        this.mergeCachedLogs(readStoredLogs(raw));
         return [...this.localLogs];
       }
     } catch (e) {
@@ -137,7 +161,7 @@ export class LootLogService {
         // Keep most recent 500 entries locally/in the broadcast; only a
         // byte-budget-trimmed window is persisted to room metadata.
         const updated = [entry, ...current].slice(0, 500);
-        const persisted = trimToByteBudget(updated, MAX_LOOT_LOG_METADATA_BYTES);
+        const persisted = packForRoom(updated, MAX_LOOT_LOG_METADATA_BYTES);
         await OBR.room.setMetadata({ [LOOT_LOG_KEY]: persisted });
         this.replaceCachedLogs(updated);
         await NetworkProtocol.syncLootLog(updated);
@@ -169,7 +193,7 @@ export class LootLogService {
       if (entry) {
         entry.undone = true;
         entry.undoneAt = Date.now();
-        const persisted = trimToByteBudget(current, MAX_LOOT_LOG_METADATA_BYTES);
+        const persisted = packForRoom(current, MAX_LOOT_LOG_METADATA_BYTES);
         await OBR.room.setMetadata({ [LOOT_LOG_KEY]: persisted });
         this.replaceCachedLogs(current);
         await NetworkProtocol.syncLootLog(current);
@@ -201,7 +225,7 @@ export class LootLogService {
       if (entry) {
         entry.undone = false;
         entry.redoneAt = Date.now();
-        const persisted = trimToByteBudget(current, MAX_LOOT_LOG_METADATA_BYTES);
+        const persisted = packForRoom(current, MAX_LOOT_LOG_METADATA_BYTES);
         await OBR.room.setMetadata({ [LOOT_LOG_KEY]: persisted });
         this.replaceCachedLogs(current);
         await NetworkProtocol.syncLootLog(current);
@@ -242,9 +266,7 @@ export class LootLogService {
     this.subscribers.add(callback);
 
     const unsubscribeMetadata = OBR.room.onMetadataChange((meta) => {
-      const raw = meta[LOOT_LOG_KEY];
-      const logs = Array.isArray(raw) ? (raw as LootLogEntry[]) : [];
-      this.mergeCachedLogs(logs);
+      this.mergeCachedLogs(readStoredLogs(meta[LOOT_LOG_KEY]));
     });
 
     return () => {

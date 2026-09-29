@@ -10,16 +10,17 @@ import {
   SETTINGS_KEY,
   SPARKLE_KEY,
 } from "./constants";
+import { warnIfLootHeavy } from "./metadataArchive";
+import { packLoot, unpackLoot } from "./metadataCodec";
 import { buildSparkle } from "./sparkle";
 import { saveBackup } from "./storage";
-import { isLootContainer, type LootContainer } from "./types";
+import { type LootContainer } from "./types";
 import { closeWindow, getSavedWindowSize } from "./windowResizer";
 
 export { closeWindow };
 
 export function getLoot(item: Item): LootContainer | undefined {
-  const meta = item.metadata[LOOT_KEY];
-  return isLootContainer(meta) ? meta : undefined;
+  return unpackLoot(item.metadata[LOOT_KEY]);
 }
 
 export function isBadge(item: Item): boolean {
@@ -40,14 +41,21 @@ export async function saveLoot(
   loot: LootContainer,
 ): Promise<void> {
   loot.updatedAt = Date.now();
+  // Stamp new items on the caller's copy too, so the editor's next save
+  // keeps the first date instead of re-stamping.
+  for (const item of loot.items) {
+    if (item.addedAt === undefined && !Object.isFrozen(item)) item.addedAt = loot.updatedAt;
+  }
   // Write a detached copy: the SDK runs updates through immer, which
   // deep-freezes the produced state. Assigning `loot` itself would freeze
   // the caller's live object and silently break every edit after the
   // first save.
   const snapshot = structuredClone(loot);
+  for (const item of snapshot.items) item.addedAt ??= loot.updatedAt;
+  const stored = packLoot(snapshot);
   await OBR.scene.items.updateItems([tokenId], (items) => {
     for (const item of items) {
-      item.metadata[LOOT_KEY] = snapshot;
+      item.metadata[LOOT_KEY] = stored;
     }
   });
   try {
@@ -56,6 +64,9 @@ export async function saveLoot(
     // A full localStorage must never fail the real save above.
     console.warn("Master Loot: localStorage backup failed", error);
   }
+  void warnIfLootHeavy().catch((error) =>
+    console.warn("Master Loot: storage check failed", error),
+  );
 }
 
 // --- room settings ----------------------------------------------------------

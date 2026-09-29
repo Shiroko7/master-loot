@@ -1,4 +1,4 @@
-import { type LootItem, type Rarity } from "./types";
+import { newItemId, type LootItem, type Rarity } from "./types";
 
 /**
  * Import items from pasted 5e.tools links.
@@ -392,7 +392,7 @@ function toLootItem(
       TRUNCATION_NOTE;
   }
   return {
-    id: crypto.randomUUID(),
+    id: newItemId(),
     kind: "item",
     name: String(item.name),
     quantity: 1,

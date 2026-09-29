@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vite-node test/inventory.test.ts && vite-node test/newspaper.test.ts && vite-node test/markdown.test.ts",
+    "test": "vite-node test/inventory.test.ts && vite-node test/newspaper.test.ts && vite-node test/markdown.test.ts && vite-node test/metadataCodec.test.ts",
     "test:browser": "playwright test",
     "test:all": "npm test && npm run test:browser"
   },
@@ -25,7 +25,8 @@
     "@fontsource/pirata-one": "^5.2.8",
     "@fontsource/shadows-into-light": "^5.2.8",
     "@fontsource/uncial-antiqua": "^5.2.7",
-    "@owlbear-rodeo/sdk": "^3.1.0"
+    "@owlbear-rodeo/sdk": "^3.1.0",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

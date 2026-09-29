@@ -64,6 +64,17 @@ a handout.
   backup. If a token loses its loot (deleted, scene mishap), reopening the editor on
   it offers a one-click **Restore**.
 - Reading preferences (font size / zoom) are stored in each user's localStorage.
+- Owlbear metadata is shared by everyone in the room and limited in size. The GM's
+  💾 **Storage** panel (action header) shows how much the scene's loot and the room
+  data use, lists containers or single items sortable by size / date / name, and
+  lets the GM **Archive** them (download a `.json` file, then remove from the scene)
+  or **Upload archive…** to put them back. Saves warn once the room data passes
+  80 % of Owlbear's 16 kB cap, or loot passes 80 % of its soft limits (50 kB per
+  container, 200 kB per scene); the action panel shows a banner until space is freed.
+- To fit more, loot is stored compactly: empty fields and defaults are dropped and
+  the rest is deflate-compressed (Z85 text) when that is smaller — about 60 % of
+  plain JSON for prose documents. The room copy of the loot log leaves out item
+  snapshots and is capped at 2 kB compressed.
 
 Documents are capped at 10,000 characters to stay under Owlbear Rodeo's per-item
 metadata size limit.

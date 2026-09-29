@@ -36,8 +36,9 @@ export const LOOT_LOG_KEY = `${EXT_ID}/lootLog`;
  * full session history still flows to connected clients over the realtime
  * broadcast channel (unbounded by this), this only caps what's written to
  * room metadata for a reconnecting/late-joining client to catch up on.
+ * Measured on the packed (compressed) form.
  */
-export const MAX_LOOT_LOG_METADATA_BYTES = 4_096;
+export const MAX_LOOT_LOG_METADATA_BYTES = 2_048;
 
 /** Modal window IDs */
 export const INVENTORY_MODAL_ID = `${EXT_ID}/inventory-modal`;

@@ -2288,3 +2288,88 @@ body.window-resizing .window-resize-handle {
   background: var(--gold);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
+
+/* --------------------------------------------------------------- storage */
+.storage-heading {
+  margin-top: 10px;
+  color: var(--gold-bright);
+  font-size: 13px;
+}
+
+.storage-meter {
+  display: flex;
+  height: 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+
+.storage-segment.seg-loot,
+.storage-segment.seg-log {
+  background: var(--gold);
+}
+
+.storage-segment.seg-settings {
+  background: var(--gold-bright);
+}
+
+.storage-segment.seg-others {
+  background: var(--muted);
+}
+
+.storage-segment.seg-warn {
+  background: #e08a2e;
+}
+
+.storage-segment.seg-over {
+  background: var(--danger);
+}
+
+.setting-hint.storage-level-warn {
+  color: #e08a2e;
+}
+
+.setting-hint.storage-level-over {
+  color: #e2584a;
+}
+
+.storage-controls select {
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-list .container-row .meta {
+  font-size: 11px;
+}
+
+.storage-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #e08a2e;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.storage-banner span {
+  flex: 1;
+}
+
+.storage-banner.storage-level-over {
+  border-color: var(--danger);
+}
+
+.btn-icon.storage-alert {
+  color: #e08a2e;
+}
+
+.container-row.storage-level-warn .meta {
+  color: #e08a2e;
+}
+
+.container-row.storage-level-over .meta {
+  color: #e2584a;
+}
