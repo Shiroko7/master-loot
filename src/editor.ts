@@ -249,6 +249,20 @@ function buildShell(): void {
   };
   enabledSwitch.append(enabledInput, track, switchText);
 
+  const takeSwitch = el("label", "switch");
+  takeSwitch.title = "Off: players can look through the loot but not take anything yet";
+  const takeInput = el("input");
+  takeInput.type = "checkbox";
+  takeInput.checked = loot.takeable !== false;
+  const takeTrack = el("span", "track");
+  const takeText = el("span");
+  takeText.textContent = "Can take";
+  takeInput.onchange = () => {
+    loot.takeable = takeInput.checked;
+    markDirty();
+  };
+  takeSwitch.append(takeInput, takeTrack, takeText);
+
   statusEl = el("span", "status");
   statusEl.textContent = "";
 
@@ -283,7 +297,7 @@ function buildShell(): void {
   close.ariaLabel = "Close";
   close.onclick = () => void closeEditor();
 
-  header.append(title, nameInput, enabledSwitch, statusEl, autosaveSwitch, saveBtn, close);
+  header.append(title, nameInput, enabledSwitch, takeSwitch, statusEl, autosaveSwitch, saveBtn, close);
 
   const main = el("div", "editor-main");
 

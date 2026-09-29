@@ -3,11 +3,14 @@ import { CTX_EDIT_ID } from "./constants";
 import {
   BADGE_DPI,
   badgePosition,
+  badgeMime,
   getBadgeCorner,
+  getBadgeImageSetting,
   getLoot,
   isBadge,
   isSparkle,
   openEditorModal,
+  resolveBadgeImage,
   openLootPopover,
   syncBadge,
 } from "./loot";
@@ -166,6 +169,24 @@ async function cleanupPass(): Promise<void> {
         const badge = item as Image;
         badge.grid.dpi = BADGE_DPI;
         badge.grid.offset = { x: badge.image.width / 2, y: badge.image.height / 2 };
+      }
+    });
+  }
+
+  // Re-point badges whose image is stale (e.g. made while the extension
+  // ran from localhost, or under an older badge setting): players can't
+  // load those and see Owlbear's "Image Unavailable" placeholder instead.
+  const badgeUrl = resolveBadgeImage(await getBadgeImageSetting());
+  const repoint = items.filter(
+    (item) => isBadge(item) && !removed.has(item.id) && (item as Image).image.url !== badgeUrl,
+  );
+  if (repoint.length > 0) {
+    const mime = badgeMime(badgeUrl);
+    await OBR.scene.items.updateItems(repoint.map((b) => b.id), (updates) => {
+      for (const item of updates) {
+        const badge = item as Image;
+        badge.image.url = badgeUrl;
+        badge.image.mime = mime;
       }
     });
   }

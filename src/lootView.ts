@@ -12,8 +12,10 @@ import { NetworkProtocol, type SocketMessage } from "./inventory/NetworkProtocol
 import type { UserInventoryItem } from "./modules/inventory/UserInventoryModel";
 import { renderMarkdownInto } from "./markdown";
 import { buildSlotPicture } from "./pictureView";
+import { confirmDialog } from "./confirmDialog";
 import {
   RARITY_META,
+  canPlayersTake,
   formatCoins,
   groupLootItems,
   type CoinKind,
@@ -28,6 +30,8 @@ let myId = "";
 let myName = "Player";
 let role: "GM" | "PLAYER" = "PLAYER";
 let inventoryCollapsed = false; // Open and visible by default
+/** Whether this viewer may take from the open container right now. */
+let takeAllowed = false;
 const openDescriptions = new Set<string>();
 const collapsedFolders = new Set<string>();
 /** Conversion denomination each player picked per coin item. */
@@ -48,13 +52,17 @@ function emptyNote(text: string): HTMLElement {
   return note;
 }
 
-/**
- * Coin slot plus (when open) a converter panel.
- */
-function renderCurrencySlot(item: LootItem, tokenName: string): HTMLElement[] {
-  const coins = item.coins ?? {};
-  const slot = el("div", "slot");
-  slot.style.setProperty("--rarity", RARITY_META[item.rarity].color);
+/** Reading verb for written/visual items, or undefined for plain items. */
+function readVerb(kind: LootItem["kind"]): string | undefined {
+  if (kind === "document") return "Read";
+  if (kind === "picture") return "View";
+  if (kind === "idcard") return "Inspect";
+  return undefined;
+}
+
+/** Dragging into an inventory is another way to take, so it obeys the lock. */
+function allowDrag(slot: HTMLElement, item: LootItem, tokenName: string): void {
+  if (!takeAllowed) return;
   slot.draggable = true;
   slot.ondragstart = (event) => {
     event.dataTransfer?.setData(
@@ -64,6 +72,59 @@ function renderCurrencySlot(item: LootItem, tokenName: string): HTMLElement[] {
     event.dataTransfer?.setData("text/plain", item.name);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   };
+}
+
+/**
+ * Taking moves an item out of the container for everyone, so it is its own
+ * labelled button that always asks first — clicking the item itself only
+ * ever reads or expands it. While taking is locked, a lock shows instead.
+ */
+function buildTakeButton(item: LootItem, tokenName: string, quantity: number): HTMLElement {
+  if (!takeAllowed) {
+    const lock = el("span", "slot-lock");
+    lock.textContent = "🔒";
+    lock.title = "You can look, but the GM hasn't allowed taking yet";
+    return lock;
+  }
+  const takeBtn = el("button", "btn btn-xs btn-take");
+  takeBtn.textContent = "🎒 Take";
+  takeBtn.title = "Move into your inventory (asks first)";
+  takeBtn.onclick = async (e) => {
+    e.stopPropagation();
+    const what = quantity > 1 ? `${quantity} × “${item.name}”` : `“${item.name}”`;
+    const ok = await confirmDialog({
+      title: "Take this?",
+      message: `Take ${what} from ${tokenName} into your inventory? It will no longer be here for anyone else.`,
+      confirmLabel: "🎒 Take it",
+    });
+    if (!ok) return;
+    takeBtn.disabled = true;
+    takeBtn.textContent = "…";
+    const res = await TransferManager.tokenToUser({
+      tokenId,
+      tokenName,
+      itemId: item.id,
+      quantity,
+      targetUserId: myId,
+      targetUserName: myName,
+    });
+    if (!res.success) {
+      alert(res.error || "Failed to take item.");
+      takeBtn.disabled = false;
+      takeBtn.textContent = "🎒 Take";
+    }
+  };
+  return takeBtn;
+}
+
+/**
+ * Coin slot plus (when open) a converter panel.
+ */
+function renderCurrencySlot(item: LootItem, tokenName: string): HTMLElement[] {
+  const coins = item.coins ?? {};
+  const slot = el("div", "slot");
+  slot.style.setProperty("--rarity", RARITY_META[item.rarity].color);
+  allowDrag(slot, item, tokenName);
 
   const icon = el("span", "slot-icon");
   icon.textContent = item.icon || "🪙";
@@ -74,28 +135,7 @@ function renderCurrencySlot(item: LootItem, tokenName: string): HTMLElement[] {
   name.append(sub);
 
   const controls = el("div", "slot-controls");
-  const takeBtn = el("button", "btn btn-xs btn-gold");
-  takeBtn.textContent = "Take";
-  takeBtn.title = "Take coins to personal inventory";
-  takeBtn.onclick = async (e) => {
-    e.stopPropagation();
-    takeBtn.disabled = true;
-    takeBtn.textContent = "…";
-    const res = await TransferManager.tokenToUser({
-      tokenId,
-      tokenName,
-      itemId: item.id,
-      quantity: item.quantity,
-      targetUserId: myId,
-      targetUserName: myName,
-    });
-    if (!res.success) {
-      alert(res.error || "Failed to take coins.");
-      takeBtn.disabled = false;
-      takeBtn.textContent = "Take";
-    }
-  };
-  controls.append(takeBtn);
+  controls.append(buildTakeButton(item, tokenName, item.quantity));
 
   slot.append(icon, name, controls);
 
@@ -125,15 +165,7 @@ function renderCurrencySlot(item: LootItem, tokenName: string): HTMLElement[] {
 function renderSlot(item: LootItem, tokenName: string): HTMLElement {
   const slot = el("div", "slot");
   slot.style.setProperty("--rarity", RARITY_META[item.rarity].color);
-  slot.draggable = true;
-  slot.ondragstart = (event) => {
-    event.dataTransfer?.setData(
-      "application/x-master-loot-item",
-      JSON.stringify({ source: "token_bag", tokenId, tokenName, item }),
-    );
-    event.dataTransfer?.setData("text/plain", item.name);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-  };
+  allowDrag(slot, item, tokenName);
 
   const icon = el("span", "slot-icon");
   icon.textContent =
@@ -148,40 +180,26 @@ function renderSlot(item: LootItem, tokenName: string): HTMLElement {
 
   const name = el("span", "slot-name");
   name.textContent = item.name;
-  if (item.kind === "document" || item.kind === "idcard" || item.kind === "picture") {
-    const sub = el("span", "slot-sub");
-    sub.textContent =
-      item.kind === "document" ? "Click to read" : item.kind === "picture" ? "Click to view" : "Click to inspect";
-    name.append(sub);
-  }
 
   const controls = el("div", "slot-controls");
   const qty = el("span", "slot-qty");
   qty.textContent = item.quantity > 1 ? `×${item.quantity}` : "";
   controls.append(qty);
 
-  const takeBtn = el("button", "btn btn-xs btn-gold");
-  takeBtn.textContent = "Take";
-  takeBtn.title = "Take to personal inventory";
-  takeBtn.onclick = async (e) => {
-    e.stopPropagation();
-    takeBtn.disabled = true;
-    takeBtn.textContent = "…";
-    const res = await TransferManager.tokenToUser({
-      tokenId,
-      tokenName,
-      itemId: item.id,
-      quantity: 1,
-      targetUserId: myId,
-      targetUserName: myName,
-    });
-    if (!res.success) {
-      alert(res.error || "Failed to take item.");
-      takeBtn.disabled = false;
-      takeBtn.textContent = "Take";
-    }
-  };
-  controls.append(takeBtn);
+  // Reading is the main action for written items: a gold button (the row
+  // opens it too); Take sits beside it, plainly styled.
+  const verb = readVerb(item.kind);
+  if (verb) {
+    const readBtn = el("button", "btn btn-xs btn-gold");
+    readBtn.textContent = item.kind === "document" ? "📖 Read" : `👁 ${verb}`;
+    readBtn.title = `${verb} without taking it`;
+    readBtn.onclick = (e) => {
+      e.stopPropagation();
+      void openDocumentModal(tokenId, item.id);
+    };
+    controls.append(readBtn);
+  }
+  controls.append(buildTakeButton(item, tokenName, 1));
 
   slot.append(icon, name, controls);
 
@@ -373,6 +391,15 @@ function render(items: Item[]): void {
 
   const body = el("div", "panel-body");
   const visible = loot && (loot.enabled || role === "GM");
+  takeAllowed = !!loot && (role === "GM" || canPlayersTake(loot));
+  if (visible && loot.items.length > 0 && loot.takeable === false) {
+    const banner = el("div", "loot-lock-banner");
+    banner.textContent =
+      role === "GM"
+        ? "🔒 Players can look but not take. Turn on “Can take” in the editor to allow it."
+        : "🔒 You can look, but the GM hasn't allowed taking yet.";
+    body.append(banner);
+  }
   if (!token || !visible) {
     body.append(emptyNote("There is nothing to loot here."));
   } else if (loot.items.length === 0) {
@@ -438,7 +465,7 @@ function render(items: Item[]): void {
 
     if (!inventoryCollapsed) {
       if (myInv.items.length === 0) {
-        body.append(emptyNote("Your inventory is empty. Click 'Take' on an item above to claim it."));
+        body.append(emptyNote("Your inventory is empty. Use 🎒 Take on an item above to claim it."));
       } else {
         for (const item of myInv.items) {
           body.append(renderInventorySlot(item, tokenName));
@@ -449,9 +476,11 @@ function render(items: Item[]): void {
 
   panel.append(body);
 
-  if (visible && loot.items.some((i) => i.kind === "document")) {
+  if (visible && loot.items.length > 0) {
     const footer = el("div", "panel-footer");
-    footer.textContent = "Click a written item to read it.";
+    footer.textContent = takeAllowed
+      ? "Click an item to read or look at it. 🎒 Take puts it in your inventory."
+      : "Click an item to read or look at it.";
     panel.append(footer);
   }
 

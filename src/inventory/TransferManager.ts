@@ -15,7 +15,7 @@ import {
 } from "../modules/inventory/UserInventoryModel";
 import { LootLogService } from "./LootLogService";
 import { NetworkProtocol, type SocketMessage } from "./NetworkProtocol";
-import type { LootItem, Rarity } from "../types";
+import { canPlayersTake, type LootItem, type Rarity } from "../types";
 
 interface PendingTransferPromise {
   resolve: (value: { success: boolean; item?: UserInventoryItem; error?: string }) => void;
@@ -526,6 +526,19 @@ export class TransferManager {
             transferId: msg.transferId,
             success: false,
             error: "Loot container missing on token.",
+          });
+          return;
+        }
+
+        // Only players ask the GM to take; the GM's own takes run locally.
+        if (!canPlayersTake(loot)) {
+          await NetworkProtocol.broadcast({
+            action: "TRANSFER_RESULT",
+            transferId: msg.transferId,
+            success: false,
+            error: loot.enabled
+              ? "The GM hasn't allowed taking from this yet."
+              : "There is nothing to loot here.",
           });
           return;
         }

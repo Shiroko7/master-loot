@@ -2236,3 +2236,55 @@ body.window-resizing .window-resize-handle {
   font-style: italic;
   text-align: center;
 }
+
+/* ------------------------------------------------ taking & the take lock */
+
+/* Take moves an item for everyone: plain and bordered, never gold, so the
+   gold Read/View button stays the obvious "look at it" action. */
+.btn-take {
+  white-space: nowrap;
+}
+
+.slot-lock {
+  font-size: 13px;
+  opacity: 0.7;
+  padding: 0 4px;
+  cursor: help;
+}
+
+.loot-lock-banner {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dialog-text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.take-lock.locked {
+  color: var(--gold-bright);
+}
+
+/* Master Loot panel: Loot / Players tabs. */
+.action-tabs {
+  margin-bottom: 10px;
+}
+
+.action-tabs .tab {
+  flex: 1;
+}
+
+.player-dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  margin: 0 4px;
+  background: var(--gold);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}

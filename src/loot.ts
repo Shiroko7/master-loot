@@ -145,7 +145,7 @@ export function resolveBadgeImage(value: string): string {
   return defaultBadgeUrl();
 }
 
-function badgeMime(url: string): string {
+export function badgeMime(url: string): string {
   if (url.startsWith("data:")) {
     return /^data:([^;,]+)/.exec(url)?.[1] ?? "image/svg+xml";
   }
@@ -395,7 +395,29 @@ export function openDocumentModal(tokenId: string, docId: string): Promise<void>
   return openReader(`token=${encodeURIComponent(tokenId)}&doc=${encodeURIComponent(docId)}`);
 }
 
-export function openUserDocumentModal(userId: string, docId: string): Promise<void> {
+/** Where a viewer hands another player's inventory to the reader window. */
+export function peerInventoryKey(userId: string): string {
+  return `master-loot:reader-peer-inventory:${userId}`;
+}
+
+/**
+ * Open a document from a player's inventory. Inventories live in their
+ * owner's browser, so when the viewer has a network copy of someone else's
+ * (`peerState`), it is handed to the reader through localStorage, which the
+ * extension's windows share.
+ */
+export function openUserDocumentModal(
+  userId: string,
+  docId: string,
+  peerState?: unknown,
+): Promise<void> {
+  if (peerState) {
+    try {
+      localStorage.setItem(peerInventoryKey(userId), JSON.stringify(peerState));
+    } catch {
+      // The reader also asks the owner for their inventory.
+    }
+  }
   return openReader(`user=${encodeURIComponent(userId)}&doc=${encodeURIComponent(docId)}`);
 }
 

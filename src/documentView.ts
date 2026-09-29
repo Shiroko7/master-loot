@@ -16,10 +16,15 @@ import "./styles/ui.css";
 import "./styles/paper.css";
 import { DOC_MODAL_ID } from "./constants";
 import { closeWindow } from "./windowResizer";
-import { getLoot } from "./loot";
+import { getLoot, peerInventoryKey } from "./loot";
 import { createDocumentReader } from "./documentReader";
 import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
-import { userInventoryItemToLootItem } from "./modules/inventory/UserInventoryModel";
+import { NetworkProtocol } from "./inventory/NetworkProtocol";
+import {
+  sanitizeInventoryState,
+  userInventoryItemToLootItem,
+  type UserInventoryState,
+} from "./modules/inventory/UserInventoryModel";
 import type { LootItem } from "./types";
 
 const params = new URLSearchParams(location.search);
@@ -37,9 +42,25 @@ function close(): void {
 const reader = createDocumentReader({ onClose: close });
 app.append(reader.el);
 
+let myId = "";
+/** Latest copy of another player's inventory (it lives in their browser). */
+let peerState: UserInventoryState | undefined;
+
+function readHandoff(): UserInventoryState | undefined {
+  try {
+    const raw = localStorage.getItem(peerInventoryKey(userId));
+    return raw ? sanitizeInventoryState(JSON.parse(raw), userId) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function findEntry(items: Item[]): LootItem | undefined {
   if (userId) {
-    const inv = LocalStorageAdapter.getInventory(userId);
+    const inv =
+      userId === myId
+        ? LocalStorageAdapter.getInventory(userId)
+        : (peerState ?? LocalStorageAdapter.getInventory(userId));
     const item = inv.items.find((i) => i.id === docId);
     return item ? userInventoryItemToLootItem(item) : undefined;
   }
@@ -64,6 +85,23 @@ document.addEventListener("keydown", (event) => {
 
 OBR.onReady(async () => {
   // Full-screen modal (see openReader in loot.ts): no window resizing.
+  myId = await OBR.player.getId();
+  if (userId && userId !== myId) {
+    peerState = readHandoff();
+    // Follow the owner's inventory live, and ask for a fresh copy.
+    NetworkProtocol.addListener(async (msg) => {
+      const state =
+        msg.action === "SYNC_INVENTORY" && msg.senderId === userId
+          ? msg.state
+          : msg.action === "GM_MODIFY_INVENTORY" && msg.targetUserId === userId
+            ? msg.state
+            : undefined;
+      if (!state) return;
+      peerState = state;
+      render(await OBR.scene.items.getItems());
+    });
+    void NetworkProtocol.requestInventory(userId, myId);
+  }
   render(await OBR.scene.items.getItems());
   OBR.scene.items.onChange(render);
 });

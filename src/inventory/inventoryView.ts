@@ -20,6 +20,7 @@ import { buildCoinChips, buildCoinConverter } from "../coins";
 import { renderMarkdownInto } from "../markdown";
 import { buildSlotPicture } from "../pictureView";
 import { createEmojiPicker } from "../emojiPicker";
+import { confirmDialog } from "../confirmDialog";
 
 const app = document.getElementById("app")!;
 
@@ -63,6 +64,11 @@ function getCurrentState(): UserInventoryState {
     return LocalStorageAdapter.getInventory(myId);
   }
   return peerInventories.get(activeUserId) ?? LocalStorageAdapter.getInventory(activeUserId);
+}
+
+/** Network copy of another player's inventory, for the reader window. */
+function peerStateFor(userId: string): UserInventoryState | undefined {
+  return userId === myId ? undefined : peerInventories.get(userId);
 }
 
 function saveCurrentState(state: UserInventoryState): void {
@@ -689,7 +695,7 @@ function renderItemSlot(
   slot.onclick = () => {
     const kind = item.data?.kind;
     if (kind === "document" || kind === "picture" || kind === "idcard") {
-      void openUserDocumentModal(activeUserId, item.id);
+      void openUserDocumentModal(activeUserId, item.id, peerStateFor(activeUserId));
       return;
     }
 
@@ -708,7 +714,7 @@ function renderItemSlot(
   // Expanded panel
   const panel = el("div", "coin-panel");
   const picture = buildSlotPicture(item.data?.imageUrl, item.name, () =>
-    void openUserDocumentModal(activeUserId, item.id),
+    void openUserDocumentModal(activeUserId, item.id, peerStateFor(activeUserId)),
   );
   if (picture) panel.append(picture);
   if (item.data?.description) {
@@ -1318,6 +1324,15 @@ function render(): void {
           // Dropped from token loot container
           const targetPlayer = onlinePlayers.find((p) => p.id === activeUserId);
           const targetName = activeUserId === myId ? myName : (targetPlayer?.name || "Player");
+          const quantity = payload.item.quantity || 1;
+          const what = quantity > 1 ? `${quantity} × “${payload.item.name}”` : `“${payload.item.name}”`;
+          const into = activeUserId === myId ? "your inventory" : `${targetName}'s inventory`;
+          const ok = await confirmDialog({
+            title: "Take this?",
+            message: `Take ${what} from ${payload.tokenName || "the loot"} into ${into}? It will no longer be there for anyone else.`,
+            confirmLabel: "🎒 Take it",
+          });
+          if (!ok) return;
 
           const res = await TransferManager.tokenToUser({
             tokenId: payload.tokenId,

@@ -229,6 +229,11 @@ export function groupLootItems(
 export interface LootContainer {
   /** When true the token shows a badge and players can open the loot. */
   enabled: boolean;
+  /**
+   * Whether players may take items out once it is lootable. `false` lets
+   * them look without taking; absent (older saves) means they may take.
+   */
+  takeable?: boolean;
   name: string;
   items: LootItem[];
   /** Ordered folder names; folders can exist empty (drop targets). */
@@ -542,6 +547,11 @@ export const STYLE_DEFAULT_FONT: Record<DocumentStyle, DocFont> = {
   book: "im-fell-english",
   newspaper: "im-fell-english",
 };
+
+/** Players can take from a container only when it is lootable and unlocked. */
+export function canPlayersTake(loot: LootContainer): boolean {
+  return loot.enabled && loot.takeable !== false;
+}
 
 export function isLootContainer(value: unknown): value is LootContainer {
   return (

@@ -1,4 +1,4 @@
-import OBR, { type Item, type Metadata } from "@owlbear-rodeo/sdk";
+import OBR, { type Item, type Metadata, type Player } from "@owlbear-rodeo/sdk";
 import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
 import { ORDER_KEY } from "./constants";
@@ -15,6 +15,7 @@ import {
   resnapBadges,
   resolveBadgeImage,
   restyleBadges,
+  saveLoot,
   setBadgeCorner,
   setBadgeImage,
   type BadgeCorner,
@@ -34,6 +35,33 @@ let containerOrder: string[] = [];
 let draggingRow: HTMLDivElement | null = null;
 /** Item updates that arrive mid-drag are held until the drag finishes. */
 let deferredItems: Item[] | null = null;
+
+/** "loot": the scene's containers (NPCs, chests…); "players": inventories. */
+type ActionTab = "loot" | "players";
+const TAB_KEY = "master-loot:action-tab";
+let activeTab: ActionTab = readTab();
+let lastItems: Item[] = [];
+let myId = "";
+let myName = "You";
+let partyPlayers: Player[] = [];
+
+function readTab(): ActionTab {
+  try {
+    return localStorage.getItem(TAB_KEY) === "players" ? "players" : "loot";
+  } catch {
+    return "loot";
+  }
+}
+
+function setTab(tab: ActionTab): void {
+  activeTab = tab;
+  try {
+    localStorage.setItem(TAB_KEY, tab);
+  } catch {
+    // Convenience only.
+  }
+  render(lastItems);
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -232,12 +260,72 @@ function renderNoScene(): void {
   body.append(note);
 }
 
+function buildTabs(): HTMLElement {
+  const tabs = el("div", "tabs action-tabs");
+  const tab = (id: ActionTab, label: string) => {
+    const btn = el("button", "btn tab");
+    btn.textContent = label;
+    btn.classList.toggle("active", activeTab === id);
+    btn.onclick = () => setTab(id);
+    return btn;
+  };
+  tabs.append(tab("loot", "💰 Loot"), tab("players", "🎒 Players"));
+  return tabs;
+}
+
+/** Everyone in the room, you first, each opening their inventory. */
+function renderPlayers(panel: HTMLElement, body: HTMLElement): void {
+  const everyone = [
+    { id: myId, name: `${myName} (you)`, role, color: "" },
+    ...[...partyPlayers]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => ({ id: p.id, name: p.name, role: p.role, color: p.color })),
+  ];
+  for (const player of everyone) {
+    const row = el("div", "container-row");
+    const dot = el("span", "player-dot");
+    if (player.color) dot.style.background = player.color;
+    const info = el("div", "info");
+    const name = el("div", "name");
+    name.textContent = player.name;
+    const meta = el("div", "meta");
+    meta.textContent = player.role === "GM" ? "Game master" : "Player";
+    info.append(name, meta);
+    const open = el("button", "btn");
+    open.textContent = "Inventory";
+    open.onclick = () => void openInventoryModal(player.id === myId ? undefined : player.id);
+    row.append(dot, info, open);
+    body.append(row);
+  }
+  if (partyPlayers.length === 0) {
+    const note = el("div", "empty-note");
+    note.textContent = "Nobody else is in the room right now.";
+    body.append(note);
+  }
+  const footer = el("div", "panel-footer");
+  footer.textContent = "Inventories load from each player's browser while they're online.";
+  panel.append(footer);
+}
+
+async function toggleTakeLock(tokenId: string, takeable: boolean): Promise<void> {
+  const token = lastItems.find((item) => item.id === tokenId);
+  const loot = token ? getLoot(token) : undefined;
+  if (!loot) return;
+  await saveLoot(tokenId, { ...structuredClone(loot), takeable });
+}
+
 function render(items: Item[]): void {
+  lastItems = items;
   if (draggingRow) {
     deferredItems = items;
     return;
   }
   const { panel, body } = shell();
+  body.append(buildTabs());
+  if (activeTab === "players") {
+    renderPlayers(panel, body);
+    return;
+  }
 
   const containers = items
     .map((item) => ({ item, loot: getLoot(item) }))
@@ -312,12 +400,35 @@ function render(items: Item[]): void {
     name.textContent = loot!.name || item.name;
     const meta = el("div", "meta");
     const count = loot!.items.length;
+    const takeable = loot!.takeable !== false;
     meta.textContent =
       `${count} item${count === 1 ? "" : "s"}` +
-      (role === "GM" && !loot!.enabled ? " · hidden from players" : "");
+      (role === "GM" && !loot!.enabled
+        ? " · hidden from players"
+        : !takeable
+          ? " · look only"
+          : "");
     info.append(name, meta);
 
     row.append(icon, info);
+
+    if (role === "GM") {
+      const lock = el("button", "btn-icon take-lock");
+      lock.textContent = takeable ? "🔓" : "🔒";
+      lock.classList.toggle("locked", !takeable);
+      lock.title = takeable
+        ? "Players can take items — click to let them only look"
+        : "Players can only look — click to let them take items";
+      lock.ariaLabel = lock.title;
+      lock.onclick = () => {
+        lock.disabled = true;
+        void toggleTakeLock(item.id, !takeable).catch((error) => {
+          console.error("Master Loot: failed to change the take lock", error);
+          lock.disabled = false;
+        });
+      };
+      row.append(lock);
+    }
 
     const open = el("button", "btn");
     open.textContent = "Open";
@@ -401,6 +512,13 @@ OBR.onReady(async () => {
   });
 
   role = await OBR.player.getRole();
+  myId = await OBR.player.getId();
+  myName = await OBR.player.getName();
+  partyPlayers = await OBR.party.getPlayers();
+  OBR.party.onChange((players) => {
+    partyPlayers = players;
+    if (activeTab === "players") render(lastItems);
+  });
   [badgeCorner, badgeImage] = await Promise.all([
     getBadgeCorner(),
     getBadgeImageSetting(),
