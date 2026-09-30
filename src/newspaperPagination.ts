@@ -86,6 +86,14 @@ function splitToFit(node: HTMLElement, column: HTMLElement): HTMLElement | undef
 export function fillNewspaperColumn(column: HTMLElement, queue: HTMLElement[]): void {
   while (queue.length) {
     const node = queue[0];
+    if (node.dataset.columnBreak) {
+      // `\column`: end this column here. At the top of an empty column (the
+      // text already overflowed into it) it would only leave a blank column.
+      queue.shift();
+      if (!column.children.length) continue;
+      column.dataset.breakReason = "column";
+      return;
+    }
     column.append(node);
     const isPicture = node.classList.contains("newspaper-slot");
     const isCrosshead = node.classList.contains("newspaper-crosshead");

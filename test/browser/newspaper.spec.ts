@@ -685,3 +685,28 @@ test("text before a |wide picture is balanced across both columns, never leaving
   expect(emptyBeside).toBe(0);
   expect(await page.locator(".newspaper-slot-page .newspaper-caption").allTextContents()).toEqual(["One", "Two"]);
 });
+
+test("\\column continues in the next column, and from the last column on the next page", async ({ page }) => {
+  await render(page, { style: "newspaper", title: "Gazette", newspaperLayout: "split-lead",
+    content: "# HARBOR\n\nFirst column.\n\n\\column\n\nSecond column.\n\\column\nNext page." });
+  const result = await measure(page);
+  checkGeometry(result);
+  expect(result.pageCount).toBe(2);
+  const columns = await page.locator(".newspaper-column").evaluateAll(nodes =>
+    nodes.map(node => (node.textContent ?? "").trim()).filter(Boolean));
+  expect(columns).toEqual(["First column.", "Second column.", "Next page."]);
+  // The marker only steers layout; nothing of it is printed.
+  await expect(page.locator(".newspaper-column-break")).toHaveCount(0);
+  expect(normalize(result.text)).not.toContain("column\\");
+});
+
+test("\\column right after text overflowed into a new column adds no blank column", async ({ page }) => {
+  await render(page, { style: "newspaper", title: "Gazette", newspaperLayout: "split-lead",
+    content: `# HARBOR\n\n${content}\n\n\\column\n\nAfterword.` });
+  const result = await measure(page);
+  checkGeometry(result);
+  const empty = await page.locator(".newspaper-column").evaluateAll(nodes =>
+    nodes.filter(node => node.children.length === 0 && node.nextElementSibling?.children.length).length);
+  expect(empty).toBe(0);
+  expect(normalize(result.text)).toBe(normalize(`${paragraphs.join(" ")} Afterword.`));
+});

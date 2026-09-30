@@ -47,7 +47,8 @@ a handout.
 - Books and journals are **paginated**: text fills fixed pages automatically and
   readers flip through them with the ‹ › flipper on the paper (or arrow keys).
   A line containing only `---` forces a page break exactly there (en/em
-  dashes, underscores and `* * *` pasted from other editors work too).
+  dashes, underscores and `* * *` pasted from other editors work too;
+  Homebrewery's `\page` is the same).
   Letters and scrolls stay one continuous sheet (`---` becomes a `* * *`
   section divider); the **Layout** picker in the editor's Style tab overrides
   either default. A paragraph wrapped in `*asterisks*` renders as an
@@ -107,7 +108,9 @@ saved headings, and header capacity at enlarged text sizes. Screenshots and
 failure traces go in `test-results/`.
 Open `/test/browser/newspaper.html` on the dev server for the article reproduction.
 Newspaper text flows to the next column/page only after the current one fills;
-`---` and new `# Story` headings still request an explicit new page.
+`---` (or `\page`) and new `# Story` headings still request an explicit new page,
+and a `\column` line continues the story in the next column (from the last column,
+on the next page). Other document styles have one column and simply hide `\column`.
 
 The composition picker offers Classic / Smart Fit (two tall columns), Front Page (an
 illustrated opening and wide introduction), Feature (one broad reading column),

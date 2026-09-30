@@ -1223,8 +1223,7 @@ function buildDocumentSyntaxGuide(
     void pickOwlbearImages().then(([picked]) => {
       if (!picked) return;
       // No caption: the upload's file name is private to the GM.
-      // Newspapers let the layout place the picture, like a real front page.
-      insertSnippet(isNewspaper ? '\n![|auto' : '\n![', `](${picked.url})\n`);
+      insertSnippet('\n![', `](${picked.url})\n`);
     });
   });
   owlbearChip.classList.add("doc-syntax-chip-accent");
@@ -1261,6 +1260,9 @@ function buildDocumentSyntaxGuide(
       ),
       createChip('--- Page', 'Start a new newspaper page with new layout', () =>
         insertSnippet('\n\n---\n\n', '', '# NEXT STORY HEADLINE')
+      ),
+      createChip('\\column', 'Continue the story in the next column', () =>
+        insertSnippet('\n\n\\column\n\n', '', '')
       ),
     );
   } else {
@@ -1333,7 +1335,8 @@ function buildDocumentSyntaxGuide(
     addRow('==text==', 'Printed yellow ink marker highlighting', '==ancient sorcery==');
     addRow('*Note / Bulletin*', 'Framed public notice / reward inquiry box', '*Report to the Watch.*');
     addRow('::: Title … :::', 'Reprinted document (several paragraphs); look: print, typed, official or note', '::: The Ledger|typed');
-    addRow('---', 'Manual page break (long articles also auto-paginate)', '---');
+    addRow('--- or \\page', 'Manual page break (long articles also auto-paginate)', '---');
+    addRow('\\column', 'Column break: the story continues in the next column (or page)', '\\column');
     addRow('![Caption|filter](url)', 'Illustration with halftone / engraving / sepia', '![Dragon|engraving](https://...)');
     addRow('![Caption|page](url)', 'Picture spanning one page, at this point in the story', '![City panorama|page|engraving](https://...)');
     addRow('![Caption|column](url)', 'Picture kept inside its reading column', '![Witness|column](https://...)');
@@ -1349,7 +1352,7 @@ function buildDocumentSyntaxGuide(
     addRow('::: Title|look', 'Document look: print (default), typed, official or note', '::: Report 7|typed');
     addRow('- item', 'Bullet list', '- 3 torches');
     addRow('1. item', 'Numbered list', '1. First step');
-    addRow('---', 'Page break (in Pages mode) or divider line', '---');
+    addRow('--- or \\page', 'Page break (in Pages mode) or divider line', '---');
     addRow('{@dice 1d20+3}', 'Interactive rollable dice tag', '{@dice 2d6+4 fire}');
     addRow('[Link](url)', 'Clickable player hyperlink', '[Map](https://...)');
     addRow('![Caption](url)', 'Picture on its own line: large and centered', '![The old mill](https://...)');
@@ -1442,7 +1445,7 @@ function renderDocumentDetail(item: LootItem): void {
       "### Section Crosshead (centered uppercase story divider)\n" +
       "==highlighted printed text== inside paragraphs\n" +
       "*Notice or inquiry text*\n" +
-      "--- Starts a new page\n" +
+      "--- Starts a new page, \\column the next column\n" +
       "![Caption|halftone](https://...) inline markdown illustration"
     : "Write the letter, page or diary entry here.\n\n" +
       "Blank lines start a new paragraph.\n" +

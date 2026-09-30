@@ -13,13 +13,14 @@ import {
   normalizeImageUrl,
   createInsert,
   splitOutsideInserts,
+  COLUMN_BREAK_LINE,
   INSERT_FENCE,
+  PAGE_BREAK_LINE,
 } from "./markdown";
 import { fillNewspaperColumn } from "./newspaperPagination";
 import { resolveNewspaperHeading } from "./newspaperHeading";
 import { fillNewspaperWidePage } from "./newspaperWidePagination";
 
-const BREAK_LINE = /^[^\S\n]*(?:[-–—―_*][^\S\n]*){3,}$/m;
 const NOTE_BLOCK = /^\*([^*][\s\S]*)\*$/;
 
 export interface RenderedDocument {
@@ -39,7 +40,9 @@ export type NewspaperFlowBlock =
   | { kind: "note"; text: string }
   /** `::: Title|look` … `:::`: a framed document printed within the story. */
   | { kind: "insert"; header: string; text: string }
-  | { kind: "image"; image: NewspaperImage };
+  | { kind: "image"; image: NewspaperImage }
+  /** `\column`: the story continues in the next column (or page). */
+  | { kind: "column-break" };
 
 export interface ParsedNewspaperPage {
   pageIndex: number;
@@ -64,7 +67,7 @@ export function resolveNewspaperLayout(preferred?: NewspaperLayout): Exclude<New
 export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
   const raw = doc.content.replace(/\r\n?/g, "\n");
   // A `---` or `# Heading` inside a `:::` insert belongs to the insert.
-  let rawSegments = splitOutsideInserts(raw, (line) => BREAK_LINE.test(line))
+  let rawSegments = splitOutsideInserts(raw, (line) => PAGE_BREAK_LINE.test(line))
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
@@ -148,6 +151,11 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
       }
       if (!line) {
         flushParagraph();
+        continue;
+      }
+      if (COLUMN_BREAK_LINE.test(line)) {
+        flushParagraph();
+        blocks.push({ kind: "column-break" });
         continue;
       }
       if (line.includes("![") && /!\[([^\]]*)\]\(([^)]+)\)/.test(line)) {
@@ -284,7 +292,10 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
       paragraphs.push("(Story continues on the back page.)");
       blocks.push({ kind: "paragraph", text: "(Story continues on the back page.)" });
     } else if (paragraphs.length === 0 && blocks.length > 0) {
-      const firstText = blocks.find((b): b is Exclude<NewspaperFlowBlock, { kind: "image" }> => b.kind !== "image");
+      const firstText = blocks.find(
+        (b): b is Exclude<NewspaperFlowBlock, { kind: "image" | "column-break" }> =>
+          b.kind !== "image" && b.kind !== "column-break",
+      );
       if (firstText) {
         paragraphs.push(firstText.text);
       }
@@ -531,6 +542,12 @@ function renderFlowBlock(
       return createInsert(block.header, block.text);
     case "image":
       return createPictureSlot(block.image, docFilter, "newspaper-slot-col");
+    case "column-break": {
+      const marker = document.createElement("div");
+      marker.className = "newspaper-column-break";
+      marker.dataset.columnBreak = "true";
+      return marker;
+    }
   }
 }
 

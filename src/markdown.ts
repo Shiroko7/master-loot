@@ -365,6 +365,19 @@ const STANDALONE_IMAGE = /^!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))+)\)$/;
 export type InsertLook = "print" | "typed" | "official" | "note";
 const INSERT_LOOKS: readonly string[] = ["print", "typed", "official", "note"];
 
+/**
+ * A line that breaks the page: `---` (or `***`, `___`, dash variants pasted
+ * from other editors) or Homebrewery's `\page`. In continuous layouts the
+ * same line draws a divider.
+ */
+export const PAGE_BREAK_LINE = /^[^\S\n]*(?:(?:[-–—―_*][^\S\n]*){3,}|\\page[^\S\n]*)$/im;
+
+/**
+ * `\column` (Homebrewery syntax): newspapers continue in the next column.
+ * Other documents have a single column, so there it is simply hidden.
+ */
+export const COLUMN_BREAK_LINE = /^[^\S\n]*\\column[^\S\n]*$/i;
+
 /** `:::` alone closes an insert; `::: Title|look` (or bare `:::`) opens one. */
 export const INSERT_FENCE = /^:::(?!:)\s*(.*)$/;
 
@@ -499,7 +512,7 @@ export function renderMarkdownInto(
   let i = 0;
   let firstParagraphRendered = false;
 
-  const HR_REGEX = /^[^\S\n]*(?:[-–—―_*][^\S\n]*){3,}$/;
+  const HR_REGEX = PAGE_BREAK_LINE;
   const NOTE_REGEX = /^\*([^*][\s\S]*)\*$/;
 
   while (i < rawLines.length) {
@@ -557,7 +570,13 @@ export function renderMarkdownInto(
       continue;
     }
 
-    // 3. Horizontal Rule: ---, ***, ___
+    // Column breaks only mean something in newspapers.
+    if (COLUMN_BREAK_LINE.test(trimmed)) {
+      i++;
+      continue;
+    }
+
+    // 3. Horizontal Rule: ---, ***, ___, \page
     if (HR_REGEX.test(trimmed)) {
       const hr = document.createElement("hr");
       hr.className = "md-hr text-divider";
@@ -670,6 +689,7 @@ export function renderMarkdownInto(
       !INSERT_FENCE.test(rawLines[i].trim()) &&
       !/^(#{1,6})\s+/.test(rawLines[i].trim()) &&
       !HR_REGEX.test(rawLines[i].trim()) &&
+      !COLUMN_BREAK_LINE.test(rawLines[i].trim()) &&
       !rawLines[i].trim().startsWith(">") &&
       !/^[-*+]\s+/.test(rawLines[i].trim()) &&
       !/^\d+\.\s+/.test(rawLines[i].trim()) &&

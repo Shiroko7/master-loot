@@ -466,3 +466,19 @@ test("::: inserts become one block, keeping blank lines, --- and # headings insi
   assert.equal(insert.header, "Test|typed");
   assert.equal(insert.text, "\nEntry 1.\n\n---\n\n# Not a story\n\nEntry 2.");
 });
+
+test("\\column becomes a column-break block, even without blank lines around it", () => {
+  const [page] = parseNewspaperPages({ style: "newspaper", title: "Gazette",
+    content: "# STORY\n\nFirst column.\n\\column\nSecond column.\n\n\\COLUMN\n\nThird." });
+  assert.deepEqual(page.blocks.map(block => block.kind),
+    ["paragraph", "column-break", "paragraph", "column-break", "paragraph"]);
+  assert.deepEqual(page.paragraphs, ["First column.", "Second column.", "Third."]);
+});
+
+test("\\page breaks the page like ---; a word 'page' does not", () => {
+  // Continuous layout: `# Headings` don't start pages there, so only the break can.
+  const pages = parseNewspaperPages({ style: "newspaper", title: "Gazette", layout: "flow",
+    content: "A.\n\n\\page\n\nB.\n\npage\n\nC." });
+  assert.equal(pages.length, 2);
+  assert.deepEqual(pages[1].paragraphs, ["B.", "page", "C."]);
+});

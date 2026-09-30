@@ -5,14 +5,13 @@ import {
   type LootDocument,
 } from "./types";
 import { renderNewspaperDocument } from "./newspaperRender";
-import { renderMarkdownInto, splitOutsideInserts } from "./markdown";
+import { PAGE_BREAK_LINE, renderMarkdownInto, splitOutsideInserts } from "./markdown";
 
 /**
  * A line of 3+ dashes (`---`) forces a page/section break. Content often
  * arrives pasted from rich editors, so also accept en/em dashes, underscores
  * and asterisks, optionally spaced (`— — —`, `***`), and NBSP "blanks".
  */
-const BREAK_LINE = /^[^\S\n]*(?:[-–—―_*][^\S\n]*){3,}$/m;
 
 /*
  * Every page starts exactly one paper-width (38em, see .paper in paper.css)
@@ -88,7 +87,7 @@ export function renderDocument(
   // on content pasted from anywhere.
   const raw = doc.content.replace(/\r\n?/g, "\n");
   const content = raw.trim() ? raw : "(This page is blank.)";
-  const segments = splitOutsideInserts(content, (line) => BREAK_LINE.test(line))
+  const segments = splitOutsideInserts(content, (line) => PAGE_BREAK_LINE.test(line))
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
   if (segments.length === 0) segments.push("(This page is blank.)");
