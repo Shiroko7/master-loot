@@ -10,6 +10,9 @@ export const SPARKLE_KEY = `${EXT_ID}/sparkle`;
 export const ORDER_KEY = `${EXT_ID}/container-order`;
 /** Room metadata key for GM-wide settings (e.g. badge corner). */
 export const SETTINGS_KEY = `${EXT_ID}/settings`;
+/** Live viewing status on a player, separate from saved loot and room metadata. */
+export const VIEWING_KEY = `${EXT_ID}/viewing`;
+export const VIEWING_CHANNEL = `${EXT_ID}/viewing-events`;
 
 export const LOOT_POPOVER_ID = `${EXT_ID}/loot-popover`;
 export const DOC_MODAL_ID = `${EXT_ID}/document-modal`;

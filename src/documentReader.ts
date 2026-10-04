@@ -1,6 +1,6 @@
 import { renderIdCard } from "./idCard";
 import { renderPicture } from "./pictureView";
-import { renderDocument, type RenderedDocument } from "./paperRender";
+import { renderDocument, type RenderedDocument, type DocumentPagePosition } from "./paperRender";
 import {
   DEFAULT_PREFS,
   FONT_SCALE_MAX,
@@ -12,6 +12,7 @@ import {
   type ReadingPrefs,
 } from "./storage";
 import type { LootItem } from "./types";
+import { describeViewingProgress, type ViewLocation } from "./viewPresenceState";
 
 /**
  * The document reader: toolbar (text size, zoom, reset, close) over the
@@ -28,11 +29,33 @@ export interface DocumentReader {
   show(entry: LootItem | undefined): void;
   next(): void;
   prev(): void;
+  /** Update the small live list of other players reading this same document. */
+  setViewers(viewers: DocumentViewer[]): void;
 }
 
-export function createDocumentReader(options: { onClose: () => void }): DocumentReader {
+export interface DocumentViewer {
+  id: string;
+  name: string;
+  location: ViewLocation;
+  hidden: boolean;
+}
+
+export interface DocumentReadingState {
+  entry: LootItem | undefined;
+  position: DocumentPagePosition | undefined;
+  atEnd: boolean;
+}
+
+export function createDocumentReader(options: {
+  onClose: () => void;
+  onReadingChange?: (state: DocumentReadingState) => void;
+}): DocumentReader {
   let prefs: ReadingPrefs = getPrefs();
   let rendered: RenderedDocument | undefined;
+  let currentEntry: LootItem | undefined;
+  let lastEntrySignature: string | undefined;
+  let restoring = false;
+  let generation = 0;
 
   const page = document.createElement("div");
   page.className = "doc-page";
@@ -47,6 +70,10 @@ export function createDocumentReader(options: { onClose: () => void }): Document
   fontValue.className = "value";
   const zoomValue = document.createElement("span");
   zoomValue.className = "value";
+
+  const viewersEl = document.createElement("div");
+  viewersEl.className = "doc-viewers";
+  viewersEl.hidden = true;
 
   function toolButton(
     label: string,
@@ -68,11 +95,63 @@ export function createDocumentReader(options: { onClose: () => void }): Document
     return s;
   }
 
+  function setViewers(viewers: DocumentViewer[]): void {
+    viewersEl.replaceChildren();
+    if (viewers.length === 0) {
+      viewersEl.hidden = true;
+      return;
+    }
+    viewersEl.hidden = false;
+    const label = document.createElement("span");
+    label.className = "doc-viewers-label";
+    label.textContent = "Also viewing:";
+    viewersEl.append(label);
+    for (const viewer of viewers) {
+      const row = document.createElement("span");
+      row.className = "doc-viewer";
+      row.dataset.viewerId = viewer.id;
+      const name = document.createElement("strong");
+      name.textContent = viewer.name;
+      row.append(name);
+      const progress = describeViewingProgress(viewer.location);
+      if (progress) {
+        const detail = document.createElement("span");
+        detail.className = "doc-viewer-progress";
+        detail.textContent = progress;
+        row.append(" · ", detail);
+      }
+      if (viewer.hidden) {
+        const background = document.createElement("span");
+        background.className = "doc-viewer-background";
+        background.textContent = " · background tab";
+        row.append(background);
+      }
+      viewersEl.append(row);
+    }
+  }
+
   const scroll = document.createElement("div");
   scroll.className = "doc-scroll";
   const stage = document.createElement("div");
   stage.className = "paper-stage";
   scroll.append(stage);
+  function reportPosition(): void {
+    if (restoring) return;
+    const position = rendered?.getPosition();
+    if (position && position.pageCount < 1) return;
+    options.onReadingChange?.({
+      entry: currentEntry,
+      position,
+      atEnd: position ? position.lastPage === position.pageCount :
+        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 8,
+    });
+  }
+  scroll.addEventListener("scroll", reportPosition, { passive: true });
+  if (options.onReadingChange) {
+    const scrollObserver = new ResizeObserver(reportPosition);
+    scrollObserver.observe(scroll);
+    scrollObserver.observe(stage);
+  }
 
   toolbar.append(
     titleEl,
@@ -88,7 +167,7 @@ export function createDocumentReader(options: { onClose: () => void }): Document
     toolButton("✕", "Close", options.onClose),
   );
 
-  page.append(toolbar, scroll);
+  page.append(toolbar, viewersEl, scroll);
 
   function clampRound(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, Math.round(value * 10) / 10));
@@ -124,10 +203,18 @@ export function createDocumentReader(options: { onClose: () => void }): Document
   }
 
   function show(entry: LootItem | undefined): void {
+    const signature = JSON.stringify(entry ?? null);
+    if (signature === lastEntrySignature) return;
+    lastEntrySignature = signature;
+    const sameEntry = entry?.id === currentEntry?.id;
+    currentEntry = entry;
+    const thisGeneration = ++generation;
+    restoring = false;
     if (entry?.kind === "idcard") {
       titleEl.textContent = entry.name || "Identification";
       rendered = undefined;
       renderIdCard(stage, entry);
+      reportPosition();
       return;
     }
     // Picture items, and regular items opened through their picture.
@@ -135,10 +222,12 @@ export function createDocumentReader(options: { onClose: () => void }): Document
       titleEl.textContent = entry.name || "Picture";
       rendered = undefined;
       renderPicture(stage, entry);
+      reportPosition();
       return;
     }
     const doc = entry?.document;
     if (!entry || !doc) {
+      currentEntry = undefined;
       titleEl.textContent = "Document";
       rendered = undefined;
       stage.innerHTML = "";
@@ -146,19 +235,26 @@ export function createDocumentReader(options: { onClose: () => void }): Document
       note.className = "empty-note";
       note.textContent = "This document is gone.";
       stage.append(note);
+      reportPosition();
       return;
     }
     // The toolbar shows the item's name; untitled papers still have one.
     titleEl.textContent = doc.title || entry.name || "Untitled";
     // Re-renders arrive for unrelated scene changes (any token move); keep
     // the reader's place instead of resetting to the top / first page.
-    const scrollTop = scroll.scrollTop;
-    const current = rendered?.getPage() ?? 0;
-    rendered = renderDocument(stage, doc);
+    const scrollTop = sameEntry ? scroll.scrollTop : 0;
+    const current = sameEntry ? rendered?.getPage() ?? 0 : 0;
+    restoring = true;
+    rendered = renderDocument(stage, doc, () => {
+      if (thisGeneration === generation) reportPosition();
+    });
     scroll.scrollTop = scrollTop;
     requestAnimationFrame(() => {
+      if (thisGeneration !== generation) return;
       rendered?.relayout();
       rendered?.goTo(current);
+      restoring = false;
+      reportPosition();
     });
   }
 
@@ -169,5 +265,6 @@ export function createDocumentReader(options: { onClose: () => void }): Document
     show,
     next: () => rendered?.next(),
     prev: () => rendered?.prev(),
+    setViewers,
   };
 }

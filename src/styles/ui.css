@@ -2194,6 +2194,45 @@ body.window-resizing .window-resize-handle {
   align-items: center;
 }
 
+.doc-viewers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  margin: 6px 10px 0;
+  padding: 6px 10px;
+  color: var(--muted);
+  background: rgba(18, 13, 7, 0.78);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.doc-viewers[hidden] {
+  display: none;
+}
+
+.doc-viewers-label {
+  color: var(--gold-bright);
+  font-weight: 600;
+}
+
+.doc-viewer {
+  white-space: nowrap;
+}
+
+.doc-viewer strong {
+  color: var(--text);
+}
+
+.doc-viewer-progress {
+  color: var(--gold-bright);
+}
+
+.doc-viewer-background {
+  color: var(--muted);
+}
+
 .picture-source .btn {
   flex-shrink: 0;
   white-space: nowrap;
@@ -2287,6 +2326,25 @@ body.window-resizing .window-resize-handle {
   margin: 0 4px;
   background: var(--gold);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.player-viewing {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.player-viewing.is-viewing {
+  color: var(--text);
+}
+
+.player-reading-progress {
+  margin-top: 2px;
+  color: var(--gold-bright);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* --------------------------------------------------------------- storage */

@@ -17,6 +17,7 @@ import {
 import { TransferManager } from "./inventory/TransferManager";
 import { NetworkProtocol } from "./inventory/NetworkProtocol";
 import { LocalStorageAdapter } from "./storage/LocalStorageAdapter";
+import { startViewPresence } from "./viewPresence";
 
 async function setupLootContextMenu(): Promise<void> {
   // Keep a GM entry point for giving loot to tokens with no container yet.
@@ -216,6 +217,7 @@ async function cleanupPass(): Promise<void> {
 }
 
 OBR.onReady(async () => {
+  void startViewPresence().catch((error) => console.warn("Master Loot: viewing status unavailable", error));
   // Loot bags and the GM menu first: they must never wait on (or be
   // blocked by) the inventory sync below, which talks to other players.
   void setupLootContextMenu();

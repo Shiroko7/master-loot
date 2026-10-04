@@ -1,7 +1,8 @@
 import OBR, { type Item, type Metadata, type Player } from "@owlbear-rodeo/sdk";
 import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
-import { ORDER_KEY } from "./constants";
+import { ORDER_KEY, VIEWING_KEY } from "./constants";
+import { describeViewing, readViewingStatus, samePlayerRoster } from "./viewPresenceState";
 import {
   BADGE_CORNERS,
   centerAnchor,
@@ -70,6 +71,8 @@ let lastSceneMeta: Metadata = {};
 let lastRoomMeta: Metadata = {};
 let myId = "";
 let myName = "You";
+let myConnectionId = "";
+let myMetadata: Metadata = {};
 let partyPlayers: Player[] = [];
 
 function readTab(): ActionTab {
@@ -712,13 +715,14 @@ function buildTabs(): HTMLElement {
 /** Everyone in the room, you first, each opening their inventory. */
 function renderPlayers(panel: HTMLElement, body: HTMLElement): void {
   const everyone = [
-    { id: myId, name: `${myName} (you)`, role, color: "" },
+    { id: myId, connectionId: myConnectionId, name: `${myName} (you)`, role, color: "" },
     ...[...partyPlayers]
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((p) => ({ id: p.id, name: p.name, role: p.role, color: p.color })),
+      .map((p) => ({ id: p.id, connectionId: p.connectionId, name: p.name, role: p.role, color: p.color })),
   ];
   for (const player of everyone) {
     const row = el("div", "container-row");
+    row.dataset.playerConnectionId = player.connectionId;
     const dot = el("span", "player-dot");
     if (player.color) dot.style.background = player.color;
     const info = el("div", "info");
@@ -727,6 +731,9 @@ function renderPlayers(panel: HTMLElement, body: HTMLElement): void {
     const meta = el("div", "meta");
     meta.textContent = player.role === "GM" ? "Game master" : "Player";
     info.append(name, meta);
+    const viewing = el("div", "player-viewing");
+    const progress = el("div", "player-reading-progress");
+    info.append(viewing, progress);
     const open = el("button", "btn");
     open.textContent = "Inventory";
     open.onclick = () => void openInventoryModal(player.id === myId ? undefined : player.id);
@@ -739,8 +746,25 @@ function renderPlayers(panel: HTMLElement, body: HTMLElement): void {
     body.append(note);
   }
   const footer = el("div", "panel-footer");
-  footer.textContent = "Inventories load from each player's browser while they're online.";
+  footer.textContent = "Viewing status is live. Reaching the last page doesn't confirm reading is complete.";
   panel.append(footer);
+  updatePlayerViewing();
+}
+
+function updatePlayerViewing(): void {
+  for (const row of mainEl.querySelectorAll<HTMLElement>("[data-player-connection-id]")) {
+    const connection = row.dataset.playerConnectionId;
+    const metadata = connection === myConnectionId ? myMetadata :
+      partyPlayers.find((player) => player.connectionId === connection)?.metadata;
+    const status = readViewingStatus(metadata?.[VIEWING_KEY]);
+    const { summary, progress } = describeViewing(status);
+    const viewing = row.querySelector<HTMLElement>(".player-viewing")!;
+    viewing.textContent = summary;
+    viewing.classList.toggle("is-viewing", !!status);
+    const progressEl = row.querySelector<HTMLElement>(".player-reading-progress")!;
+    progressEl.textContent = progress;
+    progressEl.hidden = !progress;
+  }
 }
 
 async function toggleTakeLock(tokenId: string, takeable: boolean): Promise<void> {
@@ -964,10 +988,25 @@ OBR.onReady(async () => {
   role = await OBR.player.getRole();
   myId = await OBR.player.getId();
   myName = await OBR.player.getName();
+  myConnectionId = await OBR.player.getConnectionId();
+  myMetadata = await OBR.player.getMetadata();
+  OBR.player.onChange((player) => {
+    const changed = myName !== player.name || role !== player.role;
+    myMetadata = player.metadata;
+    myName = player.name;
+    role = player.role;
+    if (changed) render(lastItems);
+    else updatePlayerViewing();
+  });
+  window.setInterval(updatePlayerViewing, 5_000);
   partyPlayers = await OBR.party.getPlayers();
   OBR.party.onChange((players) => {
+    const changed = !samePlayerRoster(partyPlayers, players);
     partyPlayers = players;
-    if (activeTab === "players") render(lastItems);
+    if (activeTab === "players") {
+      if (changed) render(lastItems);
+      else updatePlayerViewing();
+    }
   });
   [badgeCorner, badgeImage] = await Promise.all([
     getBadgeCorner(),

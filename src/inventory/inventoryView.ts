@@ -21,6 +21,8 @@ import { renderMarkdownInto } from "../markdown";
 import { buildSlotPicture } from "../pictureView";
 import { createEmojiPicker } from "../emojiPicker";
 import { confirmDialog } from "../confirmDialog";
+import { createViewReporter } from "../viewPresence";
+import { samePlayerRoster } from "../viewPresenceState";
 
 const app = document.getElementById("app")!;
 
@@ -28,6 +30,7 @@ let myId = "";
 let myName = "Player";
 let myRole: "GM" | "PLAYER" = "PLAYER";
 let activeUserId = "";
+let viewReporter: ReturnType<typeof createViewReporter> | undefined;
 let onlinePlayers: Player[] = [];
 const peerInventories = new Map<string, UserInventoryState>();
 const openDescriptions = new Set<string>();
@@ -745,6 +748,7 @@ function render(): void {
   const isGM = myRole === "GM";
   const canManage = isOwner || isGM;
   const canView = isOwner || isGM || state.isPublic;
+  viewReporter?.show(canView ? { kind: "inventory", id: activeUserId, name: getActiveUserName() } : null);
   const canInteract = isOwner || isGM || !state.isLocked;
 
   app.innerHTML = "";
@@ -1016,7 +1020,10 @@ function render(): void {
   const closeBtn = el("button", "btn-icon");
   closeBtn.textContent = "✕";
   closeBtn.title = "Close";
-  closeBtn.onclick = () => void closeWindow(INVENTORY_MODAL_ID);
+  closeBtn.onclick = () => void (async () => {
+    await viewReporter?.close();
+    await closeWindow(INVENTORY_MODAL_ID);
+  })();
   actions.append(closeBtn);
 
   header.append(actions);
@@ -1382,6 +1389,7 @@ function render(): void {
 }
 
 OBR.onReady(async () => {
+  viewReporter = createViewReporter();
   setupWindowResizer({
     windowKey: "inventory",
     type: "popover",
@@ -1408,8 +1416,9 @@ OBR.onReady(async () => {
   // Load online players
   onlinePlayers = await OBR.party.getPlayers();
   OBR.party.onChange((players) => {
+    const changed = !samePlayerRoster(onlinePlayers, players);
     onlinePlayers = players;
-    render();
+    if (changed) render();
   });
 
   // Listen to network inventory changes

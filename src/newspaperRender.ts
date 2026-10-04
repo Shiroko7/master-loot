@@ -20,17 +20,10 @@ import {
 import { fillNewspaperColumn } from "./newspaperPagination";
 import { resolveNewspaperHeading } from "./newspaperHeading";
 import { fillNewspaperWidePage } from "./newspaperWidePagination";
+import type { RenderedDocument } from "./paperRender";
+export type { RenderedDocument } from "./paperRender";
 
 const NOTE_BLOCK = /^\*([^*][\s\S]*)\*$/;
-
-export interface RenderedDocument {
-  paged: boolean;
-  relayout(): void;
-  next(): void;
-  prev(): void;
-  goTo(page: number): void;
-  getPage(): number;
-}
 
 export type NewspaperFlowBlock =
   | { kind: "paragraph"; text: string }
@@ -669,7 +662,7 @@ function storyBlocks(page: ParsedNewspaperPage): NewspaperFlowBlock[] {
   return blocks;
 }
 
-export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument): RenderedDocument {
+export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument, onPageChange?: () => void): RenderedDocument {
   activeRenderers.get(root)?.();
   root.replaceChildren();
   const paged = (doc.layout ?? defaultLayout(doc.style)) === "pages";
@@ -709,6 +702,7 @@ export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument): R
     label.textContent = `SPREAD ${currentSpread + 1} OF ${spreads.length} (PAGES ${currentSpread * 2 + 1}–${Math.min(pages.length, currentSpread * 2 + 2)})`;
     prev.disabled = currentSpread === 0;
     next.disabled = currentSpread >= spreads.length - 1;
+    onPageChange?.();
   }
   prev.onclick = () => setSpread(currentSpread - 1);
   next.onclick = () => setSpread(currentSpread + 1);
@@ -924,5 +918,10 @@ export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument): R
   relayout();
   schedule(); // Editors can attach the preview after this function returns.
   return { paged, relayout, next: () => setSpread(currentSpread + 1),
-    prev: () => setSpread(currentSpread - 1), goTo: setSpread, getPage: () => currentSpread };
+    prev: () => setSpread(currentSpread - 1), goTo: setSpread, getPage: () => currentSpread,
+    getPosition: () => paged ? {
+      page: currentSpread * 2 + 1,
+      lastPage: Math.min(pages.length, currentSpread * 2 + 2),
+      pageCount: pages.length,
+    } : undefined };
 }

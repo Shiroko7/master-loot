@@ -56,6 +56,17 @@ a handout.
   (e.g. `*Several pages are torn out.*`) rather than ink written on it.
 - Readers can adjust **text size** and **zoom** independently; the preference is
   remembered per browser (localStorage).
+- The **Players** tab shows everyone's live viewing status, including the open
+  loot container, inventory, document, picture, or ID card. Books and journals
+  report the current page and total pages; newspapers report both pages in the
+  visible spread. Continuous letters and scrolls show when the end is visible.
+  Background tabs are marked, and closing a view or leaving the room clears its
+  status (an abruptly closed window expires within about 25 seconds). Reaching
+  the last page indicates viewing progress, not confirmed reading completion.
+- When you are reading a document, the reader also shows an **Also viewing**
+  strip for other players on that same document, with their current page or
+  spread. Documents with the same item name but different loot sources are
+  kept separate.
 
 ## Data & persistence
 
@@ -65,6 +76,8 @@ a handout.
   backup. If a token loses its loot (deleted, scene mishap), reopening the editor on
   it offers a one-click **Restore**.
 - Reading preferences (font size / zoom) are stored in each user's localStorage.
+- Viewing status is temporary player metadata, coordinated by each player's
+  background extension. It does not add data to saved loot or room metadata.
 - Owlbear metadata is shared by everyone in the room and limited in size. The GM's
   💾 **Storage** panel (action header) shows how much the scene's loot and the room
   data use, lists containers or single items sortable by size / date / name, and

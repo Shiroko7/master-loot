@@ -29,6 +29,14 @@ export interface RenderedDocument {
   prev(): void;
   goTo(page: number): void;
   getPage(): number;
+  /** Physical, one-based pages; newspapers show two pages per spread. */
+  getPosition(): DocumentPagePosition | undefined;
+}
+
+export interface DocumentPagePosition {
+  page: number;
+  lastPage: number;
+  pageCount: number;
 }
 
 const FLOW_HANDLE: RenderedDocument = {
@@ -38,6 +46,7 @@ const FLOW_HANDLE: RenderedDocument = {
   prev() {},
   goTo() {},
   getPage: () => 0,
+  getPosition: () => undefined,
 };
 
 /**
@@ -47,9 +56,10 @@ const FLOW_HANDLE: RenderedDocument = {
 export function renderDocument(
   root: HTMLElement,
   doc: LootDocument,
+  onPageChange?: () => void,
 ): RenderedDocument {
   if (doc.style === "newspaper") {
-    return renderNewspaperDocument(root, doc);
+    return renderNewspaperDocument(root, doc, onPageChange);
   }
 
   root.innerHTML = "";
@@ -138,6 +148,7 @@ export function renderDocument(
       label.textContent = `${page + 1} / ${count}`;
       prevBtn.disabled = page === 0;
       nextBtn.disabled = page === count - 1;
+      if (paper.isConnected) onPageChange?.();
     };
     const relayout = (): void => {
       // Pictures size themselves against the real page height (see the
@@ -186,6 +197,7 @@ export function renderDocument(
       prev: () => setPage(page - 1),
       goTo: (target) => setPage(target),
       getPage: () => page,
+      getPosition: () => ({ page: page + 1, lastPage: page + 1, pageCount: count }),
     };
   } else {
     if (title) paper.append(title);

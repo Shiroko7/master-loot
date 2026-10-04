@@ -13,6 +13,7 @@ import type { UserInventoryItem } from "./modules/inventory/UserInventoryModel";
 import { renderMarkdownInto } from "./markdown";
 import { buildSlotPicture } from "./pictureView";
 import { confirmDialog } from "./confirmDialog";
+import { createViewReporter } from "./viewPresence";
 import {
   RARITY_META,
   canPlayersTake,
@@ -29,6 +30,7 @@ const tokenId = new URLSearchParams(location.search).get("token") ?? "";
 let myId = "";
 let myName = "Player";
 let role: "GM" | "PLAYER" = "PLAYER";
+let viewReporter: ReturnType<typeof createViewReporter> | undefined;
 let inventoryCollapsed = false; // Open and visible by default
 /** Whether this viewer may take from the open container right now. */
 let takeAllowed = false;
@@ -383,7 +385,10 @@ function render(items: Item[]): void {
   const close = el("button", "btn-icon");
   close.textContent = "✕";
   close.ariaLabel = "Close";
-  close.onclick = () => void OBR.popover.close(LOOT_POPOVER_ID);
+  close.onclick = () => void (async () => {
+    await viewReporter?.close();
+    await OBR.popover.close(LOOT_POPOVER_ID);
+  })();
   actions.append(logBtn, invBtn, close);
 
   header.append(title, actions);
@@ -391,6 +396,7 @@ function render(items: Item[]): void {
 
   const body = el("div", "panel-body");
   const visible = loot && (loot.enabled || role === "GM");
+  viewReporter?.show(visible ? { kind: "loot", id: tokenId, name: tokenName } : null);
   takeAllowed = !!loot && (role === "GM" || canPlayersTake(loot));
   if (visible && loot.items.length > 0 && loot.takeable === false) {
     const banner = el("div", "loot-lock-banner");
@@ -492,6 +498,7 @@ async function refresh(): Promise<void> {
 }
 
 OBR.onReady(async () => {
+  viewReporter = createViewReporter();
   setupWindowResizer({
     windowKey: "loot",
     type: "popover",

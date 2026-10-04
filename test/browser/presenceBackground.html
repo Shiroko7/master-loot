@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><title>Viewing coordinator</title></head>
+  <body><script type="module">
+    import OBR from "@owlbear-rodeo/sdk";
+    import { startViewPresence } from "../../src/viewPresence.ts";
+    OBR.onReady(() => { void startViewPresence(); });
+  </script></body>
+</html>
