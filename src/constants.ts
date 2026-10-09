@@ -8,6 +8,8 @@ export const BADGE_KEY = `${EXT_ID}/badge`;
 export const SPARKLE_KEY = `${EXT_ID}/sparkle`;
 /** Scene metadata key that stores the display order of loot containers. */
 export const ORDER_KEY = `${EXT_ID}/container-order`;
+/** Scene metadata key that stores the GM's groups of loot containers. */
+export const GROUPS_KEY = `${EXT_ID}/container-groups`;
 /** Room metadata key for GM-wide settings (e.g. badge corner). */
 export const SETTINGS_KEY = `${EXT_ID}/settings`;
 /** Live viewing status on a player, separate from saved loot and room metadata. */

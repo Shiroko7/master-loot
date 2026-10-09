@@ -1,7 +1,15 @@
 import OBR, { type Item, type Metadata, type Player } from "@owlbear-rodeo/sdk";
 import "@fontsource/cinzel/600.css";
 import "./styles/ui.css";
-import { ORDER_KEY, VIEWING_KEY } from "./constants";
+import { GROUPS_KEY, ORDER_KEY, VIEWING_KEY } from "./constants";
+import {
+  UNGROUPED_ID,
+  groupContainers,
+  newGroupName,
+  readGroups,
+  type ContainerGroup,
+} from "./containerGroups";
+import { newItemId, type LootContainer } from "./types";
 import { describeViewing, readViewingStatus, samePlayerRoster } from "./viewPresenceState";
 import {
   BADGE_CORNERS,
@@ -59,8 +67,42 @@ let unsubscribeMeta: (() => void) | undefined;
 /** Display order of containers (token ids), synced through scene metadata. */
 let containerOrder: string[] = [];
 let draggingRow: HTMLDivElement | null = null;
-/** Item updates that arrive mid-drag are held until the drag finishes. */
+/** Item updates that arrive mid-drag or mid-rename are held until it ends. */
 let deferredItems: Item[] | null = null;
+
+/** GM-only groups of containers, synced through scene metadata. */
+let containerGroups: ContainerGroup[] = [];
+/** Group whose name is being typed, and its input while it has focus. */
+let renamingGroupId: string | null = null;
+let renameInput: HTMLInputElement | null = null;
+/** Collapsed group the dragged row is hovering; it lands there on drop. */
+let dropSection: HTMLElement | null = null;
+
+/** Which groups are folded away is this GM's own view, kept per browser. */
+const COLLAPSED_KEY = "master-loot:collapsed-groups";
+const collapsedGroups = readCollapsed();
+
+function readCollapsed(): Set<string> {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return new Set(Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function setCollapsed(ids: string[], collapsed: boolean): void {
+  for (const id of ids) {
+    if (collapsed) collapsedGroups.add(id);
+    else collapsedGroups.delete(id);
+  }
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedGroups]));
+  } catch {
+    // Convenience only.
+  }
+  render(lastItems);
+}
 
 /** "loot": the scene's containers (NPCs, chests…); "players": inventories. */
 type ActionTab = "loot" | "players";
@@ -116,16 +158,49 @@ function readOrder(metadata: Metadata): string[] {
     : [];
 }
 
-async function saveOrder(body: HTMLElement): Promise<void> {
-  const order = [...body.querySelectorAll<HTMLElement>(".container-row")]
+function rowIds(parent: Element): string[] {
+  return [...parent.querySelectorAll<HTMLElement>(".container-row")]
     .map((row) => row.dataset.tokenId)
     .filter((id): id is string => id !== undefined);
-  containerOrder = order;
+}
+
+/** After a drag: the rows' order and group membership as they now sit. */
+async function saveLayout(body: HTMLElement): Promise<void> {
+  containerOrder = rowIds(body);
+  containerGroups = containerGroups.map((group) => {
+    const section = [...body.querySelectorAll<HTMLElement>(".container-group")].find(
+      (candidate) => candidate.dataset.groupId === group.id,
+    );
+    return section ? { ...group, tokens: rowIds(section) } : group;
+  });
   try {
-    await OBR.scene.setMetadata({ [ORDER_KEY]: order });
+    await OBR.scene.setMetadata({ [ORDER_KEY]: containerOrder, [GROUPS_KEY]: containerGroups });
   } catch (error) {
     console.error("Master Loot: failed to save container order", error);
   }
+}
+
+async function saveGroups(groups: ContainerGroup[]): Promise<void> {
+  containerGroups = groups;
+  render(lastItems);
+  try {
+    await OBR.scene.setMetadata({ [GROUPS_KEY]: groups });
+  } catch (error) {
+    console.error("Master Loot: failed to save container groups", error);
+  }
+}
+
+function addGroup(): void {
+  const group = { id: newItemId(), name: newGroupName(containerGroups), tokens: [] };
+  renamingGroupId = group.id;
+  void saveGroups([...containerGroups, group]);
+}
+
+/** Renders held back while the GM was dragging or typing a group name. */
+function flushDeferred(): void {
+  const pending = deferredItems;
+  deferredItems = null;
+  if (pending) render(pending);
 }
 
 const CORNER_LABELS: Record<BadgeCorner, string> = {
@@ -774,10 +849,209 @@ async function toggleTakeLock(tokenId: string, takeable: boolean): Promise<void>
   await saveLoot(tokenId, { ...structuredClone(loot), takeable });
 }
 
+/** "+ Group" and, once there are groups, fold or unfold all of them. */
+function buildGroupToolbar(sectionIds: string[]): HTMLElement {
+  const bar = el("div", "group-toolbar");
+  const add = el("button", "add-folder-link");
+  add.type = "button";
+  add.textContent = "📁 + Group";
+  add.title = "Add a group to file containers under; drag them onto it";
+  add.onclick = addGroup;
+  bar.append(add);
+  if (sectionIds.length > 0) {
+    const allCollapsed = sectionIds.every((id) => collapsedGroups.has(id));
+    const fold = el("button", "add-folder-link");
+    fold.type = "button";
+    fold.textContent = allCollapsed ? "▾ Expand all" : "▸ Collapse all";
+    fold.onclick = () => setCollapsed(sectionIds, !allCollapsed);
+    bar.append(fold);
+  }
+  return bar;
+}
+
+/**
+ * Heading of a section: click folds it. `group` is absent for the
+ * "Ungrouped" section, which cannot be renamed or dissolved.
+ */
+function buildGroupHead(
+  id: string,
+  label: string,
+  count: number,
+  group?: ContainerGroup,
+): HTMLElement {
+  const head = el("div", "folder-head");
+  const chevron = el("span", "chev");
+  chevron.textContent = collapsedGroups.has(id) ? "▸" : "▾";
+  head.append(chevron);
+
+  if (group && renamingGroupId === id) {
+    const input = el("input", "folder-rename");
+    input.value = label;
+    input.maxLength = 60;
+    let done = false;
+    const finish = (commit: boolean) => {
+      if (done) return;
+      done = true;
+      renamingGroupId = null;
+      renameInput = null;
+      const name = input.value.trim();
+      if (commit && name && name !== group.name) {
+        deferredItems = null;
+        void saveGroups(containerGroups.map((g) => (g.id === id ? { ...g, name } : g)));
+      } else {
+        deferredItems ??= lastItems;
+        flushDeferred();
+      }
+    };
+    input.onclick = (event) => event.stopPropagation();
+    input.onkeydown = (event) => {
+      if (event.key === "Enter") finish(true);
+      if (event.key === "Escape") finish(false);
+    };
+    input.onblur = () => finish(true);
+    head.append(input);
+    renameInput = input;
+    queueMicrotask(() => {
+      input.focus();
+      input.select();
+    });
+    return head;
+  }
+
+  const name = el("span", "folder-label");
+  name.textContent = label;
+  const countEl = el("span", "folder-count");
+  countEl.textContent = String(count);
+  head.append(name, countEl);
+  if (group) {
+    const startRename = (event: Event) => {
+      event.stopPropagation();
+      renamingGroupId = id;
+      render(lastItems);
+    };
+    name.ondblclick = startRename;
+    const rename = el("button", "mini");
+    rename.textContent = "✎";
+    rename.title = "Rename group";
+    rename.onclick = startRename;
+    const dissolve = el("button", "mini");
+    dissolve.textContent = "✕";
+    dissolve.title = "Dissolve group (its containers are kept)";
+    dissolve.onclick = (event) => {
+      event.stopPropagation();
+      void saveGroups(containerGroups.filter((g) => g.id !== id));
+    };
+    head.append(rename, dissolve);
+  }
+  head.onclick = () => setCollapsed([id], !collapsedGroups.has(id));
+  return head;
+}
+
+function buildContainerRow(item: Item, loot: LootContainer, body: HTMLElement): HTMLElement {
+  const row = el("div", "container-row");
+  row.dataset.tokenId = item.id;
+  if (!loot.enabled) row.classList.add("disabled");
+
+  if (role === "GM") {
+    const grip = el("span", "drag-handle");
+    grip.textContent = "⠿";
+    grip.title = "Drag to reorder";
+    // Only grabs that start on the handle may drag the row, so the
+    // buttons and text stay clickable/selectable.
+    grip.onpointerdown = () => {
+      row.draggable = true;
+      window.addEventListener(
+        "pointerup",
+        () => {
+          row.draggable = false;
+        },
+        { once: true },
+      );
+    };
+    row.append(grip);
+
+    row.ondragstart = (event) => {
+      draggingRow = row;
+      row.classList.add("dragging");
+      event.dataTransfer?.setData("text/plain", item.id);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    };
+    row.ondragend = () => {
+      row.classList.remove("dragging");
+      row.draggable = false;
+      draggingRow = null;
+      dropSection?.querySelector(".folder-head")?.classList.remove("drag-over");
+      dropSection = null;
+      // Render even with nothing held back: counts and collapsed groups
+      // only catch up with the moved row on a fresh render.
+      deferredItems ??= lastItems;
+      void saveLayout(body);
+      flushDeferred();
+    };
+  }
+
+  const icon = el("span");
+  icon.textContent = loot.enabled ? "💰" : "🔒";
+
+  const info = el("div", "info");
+  const name = el("div", "name");
+  name.textContent = loot.name || item.name;
+  const meta = el("div", "meta");
+  const count = loot.items.length;
+  const takeable = loot.takeable !== false;
+  meta.textContent =
+    `${count} item${count === 1 ? "" : "s"}` +
+    (role === "GM" && !loot.enabled
+      ? " · hidden from players"
+      : !takeable
+        ? " · look only"
+        : "");
+  info.append(name, meta);
+
+  row.append(icon, info);
+
+  if (role === "GM") {
+    const lock = el("button", "btn-icon take-lock");
+    lock.textContent = takeable ? "🔓" : "🔒";
+    lock.classList.toggle("locked", !takeable);
+    lock.title = takeable
+      ? "Players can take items — click to let them only look"
+      : "Players can only look — click to let them take items";
+    lock.ariaLabel = lock.title;
+    lock.onclick = () => {
+      lock.disabled = true;
+      void toggleTakeLock(item.id, !takeable).catch((error) => {
+        console.error("Master Loot: failed to change the take lock", error);
+        lock.disabled = false;
+      });
+    };
+    row.append(lock);
+  }
+
+  const open = el("button", "btn");
+  open.textContent = "Open";
+  open.onclick = () => {
+    void (async () => {
+      await openLootPopover(item.id, { position: await centerAnchor() });
+    })();
+  };
+  row.append(open);
+
+  if (role === "GM") {
+    const edit = el("button", "btn btn-gold");
+    edit.textContent = "Edit";
+    edit.onclick = () => void openEditorModal(item.id);
+    row.append(edit);
+  }
+
+  return row;
+}
+
+
 function render(items: Item[]): void {
   lastItems = items;
   void renderStorage();
-  if (draggingRow) {
+  if (draggingRow || (renameInput?.isConnected && document.activeElement === renameInput)) {
     deferredItems = items;
     return;
   }
@@ -822,121 +1096,80 @@ function render(items: Item[]): void {
     body.append(note);
   }
 
-  for (const { item, loot } of ordered) {
-    const row = el("div", "container-row");
-    row.dataset.tokenId = item.id;
-    if (!loot!.enabled) row.classList.add("disabled");
+  const byId = new Map(ordered.map((entry) => [entry.item.id, entry]));
+  const rowFor = (id: string): HTMLElement => {
+    const { item, loot } = byId.get(id)!;
+    return buildContainerRow(item, loot!, body);
+  };
+  const ids = ordered.map((entry) => entry.item.id);
 
-    if (role === "GM") {
-      const grip = el("span", "drag-handle");
-      grip.textContent = "⠿";
-      grip.title = "Drag to reorder";
-      // Only grabs that start on the handle may drag the row, so the
-      // buttons and text stay clickable/selectable.
-      grip.onpointerdown = () => {
-        row.draggable = true;
-        window.addEventListener(
-          "pointerup",
-          () => {
-            row.draggable = false;
-          },
-          { once: true },
-        );
-      };
-      row.append(grip);
+  if (role !== "GM") {
+    // Groups are the GM's filing system; players get the plain list.
+    body.append(...ids.map(rowFor));
+  } else {
+    const layout = groupContainers(ids, containerGroups);
+    const hasGroups = layout.groups.length > 0;
+    const sectionIds = [UNGROUPED_ID, ...layout.groups.map(({ group }) => group.id)];
+    body.append(buildGroupToolbar(hasGroups ? sectionIds : []));
 
-      row.ondragstart = (event) => {
-        draggingRow = row;
-        row.classList.add("dragging");
-        event.dataTransfer?.setData("text/plain", item.id);
-        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      };
-      row.ondragend = () => {
-        row.classList.remove("dragging");
-        row.draggable = false;
-        draggingRow = null;
-        void saveOrder(body);
-        if (deferredItems) {
-          const pending = deferredItems;
-          deferredItems = null;
-          render(pending);
-        }
-      };
-    }
-
-    const icon = el("span");
-    icon.textContent = loot!.enabled ? "💰" : "🔒";
-
-    const info = el("div", "info");
-    const name = el("div", "name");
-    name.textContent = loot!.name || item.name;
-    const meta = el("div", "meta");
-    const count = loot!.items.length;
-    const takeable = loot!.takeable !== false;
-    meta.textContent =
-      `${count} item${count === 1 ? "" : "s"}` +
-      (role === "GM" && !loot!.enabled
-        ? " · hidden from players"
-        : !takeable
-          ? " · look only"
-          : "");
-    info.append(name, meta);
-
-    row.append(icon, info);
-
-    if (role === "GM") {
-      const lock = el("button", "btn-icon take-lock");
-      lock.textContent = takeable ? "🔓" : "🔒";
-      lock.classList.toggle("locked", !takeable);
-      lock.title = takeable
-        ? "Players can take items — click to let them only look"
-        : "Players can only look — click to let them take items";
-      lock.ariaLabel = lock.title;
-      lock.onclick = () => {
-        lock.disabled = true;
-        void toggleTakeLock(item.id, !takeable).catch((error) => {
-          console.error("Master Loot: failed to change the take lock", error);
-          lock.disabled = false;
-        });
-      };
-      row.append(lock);
-    }
-
-    const open = el("button", "btn");
-    open.textContent = "Open";
-    open.onclick = () => {
-      void (async () => {
-        await openLootPopover(item.id, { position: await centerAnchor() });
-      })();
+    const section = (id: string, tokens: string[], head?: HTMLElement): void => {
+      const wrap = el("div", "container-group");
+      wrap.dataset.groupId = id;
+      const rows = el("div", "group-rows");
+      rows.hidden = !!head && collapsedGroups.has(id);
+      rows.append(...tokens.map(rowFor));
+      if (head) wrap.append(head);
+      wrap.append(rows);
+      body.append(wrap);
     };
-    row.append(open);
-
-    if (role === "GM") {
-      const edit = el("button", "btn btn-gold");
-      edit.textContent = "Edit";
-      edit.onclick = () => void openEditorModal(item.id);
-      row.append(edit);
+    // Without groups the list looks as it always did: no headings at all.
+    section(
+      UNGROUPED_ID,
+      layout.ungrouped,
+      hasGroups ? buildGroupHead(UNGROUPED_ID, "Ungrouped", layout.ungrouped.length) : undefined,
+    );
+    for (const { group, tokens } of layout.groups) {
+      section(group.id, tokens, buildGroupHead(group.id, group.name, tokens.length, group));
     }
 
-    body.append(row);
-  }
-
-  if (role === "GM") {
+    const clearDropSection = () => {
+      dropSection?.querySelector(".folder-head")?.classList.remove("drag-over");
+      dropSection = null;
+    };
     body.ondragover = (event) => {
       if (!draggingRow) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-      const rows = [
-        ...body.querySelectorAll<HTMLElement>(".container-row:not(.dragging)"),
-      ];
+      clearDropSection();
+      const sections = [...body.querySelectorAll<HTMLElement>(".container-group")];
+      const last = sections[sections.length - 1];
+      // The section under the pointer; below the whole list means the last.
+      const target =
+        (event.target as HTMLElement).closest<HTMLElement>(".container-group") ??
+        (last && event.clientY > last.getBoundingClientRect().bottom ? last : undefined);
+      const zone = target?.querySelector<HTMLElement>(".group-rows");
+      if (!target || !zone) return;
+      if (zone.hidden) {
+        // A collapsed group takes the row when it is dropped on its heading.
+        dropSection = target;
+        target.querySelector(".folder-head")?.classList.add("drag-over");
+        return;
+      }
+      const rows = [...zone.querySelectorAll<HTMLElement>(".container-row:not(.dragging)")];
       const next = rows.find((other) => {
         const rect = other.getBoundingClientRect();
         return event.clientY < rect.top + rect.height / 2;
       });
-      if (next) body.insertBefore(draggingRow, next);
-      else body.append(draggingRow);
+      if (next) zone.insertBefore(draggingRow, next);
+      else zone.append(draggingRow);
     };
-    body.ondrop = (event) => event.preventDefault();
+    body.ondrop = (event) => {
+      event.preventDefault();
+      if (draggingRow && dropSection) {
+        dropSection.querySelector(".group-rows")?.append(draggingRow);
+      }
+      clearDropSection();
+    };
   }
 
   const footer = el("div", "panel-footer");
@@ -955,11 +1188,13 @@ async function refresh(ready: boolean): Promise<void> {
   if (ready) {
     lastSceneMeta = await OBR.scene.getMetadata();
     containerOrder = readOrder(lastSceneMeta);
+    containerGroups = readGroups(lastSceneMeta[GROUPS_KEY]);
     render(await OBR.scene.items.getItems());
     unsubscribeItems = OBR.scene.items.onChange(render);
     unsubscribeMeta = OBR.scene.onMetadataChange((metadata) => {
       lastSceneMeta = metadata;
       containerOrder = readOrder(metadata);
+      containerGroups = readGroups(metadata[GROUPS_KEY]);
       void OBR.scene.items.getItems().then(render);
     });
   } else {
