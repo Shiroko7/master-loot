@@ -1,3 +1,5 @@
+import { MUSIC_EXAMPLE } from "./musicSheet";
+
 export type Rarity =
   | "none"
   | "poor"
@@ -12,7 +14,8 @@ export type DocumentStyle =
   | "scroll"
   | "book"
   | "journal"
-  | "newspaper";
+  | "newspaper"
+  | "music";
 
 export type DocLayout = "flow" | "pages";
 
@@ -80,6 +83,7 @@ export interface LootDocument {
   style: DocumentStyle;
   /** Heading written on the paper itself; empty renders no heading. */
   title: string;
+  /** Markdown text; for the "music" style, ABC notation (see musicSheet.ts). */
   content: string;
   /** Typeface for title and body; defaults per style for older documents. */
   font?: DocFont;
@@ -313,6 +317,7 @@ export const DOC_STYLES: readonly DocumentStyle[] = [
   "book",
   "journal",
   "newspaper",
+  "music",
 ];
 
 export const DOC_STYLE_META: Record<
@@ -324,6 +329,7 @@ export const DOC_STYLE_META: Record<
   book: { label: "Book", icon: "📕" },
   journal: { label: "Journal", icon: "📖" },
   newspaper: { label: "Newspaper", icon: "📰" },
+  music: { label: "Music sheet", icon: "🎼" },
 };
 
 export const DOC_LAYOUTS: readonly DocLayout[] = ["flow", "pages"];
@@ -442,9 +448,12 @@ export const NEWSPAPER_HEADER_META: Record<
   },
 };
 
-/** Bound papers and multi-column newspapers flip pages; loose sheets scroll. */
+/**
+ * Bound papers, multi-column newspapers and sheet music (two pages side by
+ * side, as on a music stand) flip pages; loose sheets scroll.
+ */
 export function defaultLayout(style: DocumentStyle): DocLayout {
-  return style === "book" || style === "journal" || style === "newspaper"
+  return style === "book" || style === "journal" || style === "newspaper" || style === "music"
     ? "pages"
     : "flow";
 }
@@ -548,6 +557,7 @@ export const STYLE_DEFAULT_FONT: Record<DocumentStyle, DocFont> = {
   scroll: "im-fell-english",
   book: "im-fell-english",
   newspaper: "im-fell-english",
+  music: "im-fell-english",
 };
 
 /** Players can take from a container only when it is lootable and unlocked. */
@@ -628,14 +638,20 @@ export function createLootDocument(style: DocumentStyle = "letter"): LootItem {
   return {
     id: newItemId(),
     kind: "document",
-    name: isNewspaper ? "Newspaper edition" : "Crumpled letter",
+    name: isNewspaper
+      ? "Newspaper edition"
+      : style === "music"
+        ? "Sheet music"
+        : "Crumpled letter",
     quantity: 1,
     rarity: "none",
     icon: DOC_STYLE_META[style].icon,
     document: {
       style,
       title: "",
-      content: "",
+      // A music sheet starts with a tune to edit: staves explain the
+      // notation better than an empty box does.
+      content: style === "music" ? MUSIC_EXAMPLE : "",
       font: STYLE_DEFAULT_FONT[style],
       newspaperLayout: isNewspaper ? "auto" : undefined,
       newspaperHeader: isNewspaper ? "tabloid-splash" : undefined,

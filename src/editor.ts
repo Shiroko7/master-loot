@@ -25,6 +25,8 @@ import { createDocumentReader, type DocumentReader } from "./documentReader";
 import { createNewspaperLayoutPicker } from "./newspaperLayoutPicker";
 import { createNewspaperHeaderFields } from "./newspaperHeaderFields";
 import { createNewspaperImageManager } from "./newspaperImageManager";
+import { MUSIC_PLACEHOLDER, createMusicGuide } from "./musicGuide";
+import { MUSIC_EXAMPLE, MUSIC_RENDER_EVENT, type MusicRenderDetail } from "./musicSheet";
 import { getBackup } from "./storage";
 import { buildCoinConverter } from "./coins";
 import { renderMarkdownInto, isImgurAlbumUrl } from "./markdown";
@@ -339,11 +341,14 @@ function buildShell(): void {
     addGrid.append(tile);
   };
   addTile("⚔️", "Item", "Add a weapon, armor or trinket", () => addLootItem(createLootItem()));
-  addTile("📜", "Document", "Add a letter, scroll, book or journal", () =>
+  addTile("📜", "Document", "Add a letter, scroll, book, journal or music sheet", () =>
     addLootItem(createLootDocument()),
   );
   addTile("📰", "Newspaper", "Add a printed newspaper", () =>
     addLootItem(createLootDocument("newspaper")),
+  );
+  addTile("🎼", "Music", "Add a sheet of music: a song, a bard's tune", () =>
+    addLootItem(createLootDocument("music")),
   );
   addTile("🖼️", "Picture", "Add a picture from Owlbear with a description", () =>
     addLootItem(createPictureItem()),
@@ -1408,19 +1413,24 @@ function renderDocumentDetail(item: LootItem): void {
   };
 
   const isNewspaper = doc.style === "newspaper";
+  const isMusic = doc.style === "music";
 
   detailEl.append(field(isNewspaper ? "Item name (inventory only)" : "Name", nameInput));
+  let titleInput: HTMLInputElement | undefined;
   if (isNewspaper) {
     detailEl.append(createNewspaperHeaderFields(doc, markDirty));
   } else {
-    const titleInput = el("input");
+    titleInput = el("input");
     titleInput.value = doc.title;
-    titleInput.placeholder = "Written on the paper; leave empty for none.";
-    titleInput.oninput = () => {
-      doc.title = titleInput.value;
+    titleInput.placeholder = isMusic
+      ? "Written at the top of the sheet; or use a T: line in the notation."
+      : "Written on the paper; leave empty for none.";
+    const input = titleInput;
+    input.oninput = () => {
+      doc.title = input.value;
       markDirty();
     };
-    detailEl.append(field("Title (optional)", titleInput));
+    detailEl.append(field("Title (optional)", input));
   }
 
   detailEl.append(commonFields(item));
@@ -1433,7 +1443,10 @@ function renderDocumentDetail(item: LootItem): void {
   contentInput.value = doc.content;
   contentInput.maxLength = MAX_DOC_CHARS;
   contentInput.rows = 12;
-  contentInput.placeholder = isNewspaper
+  if (isMusic) contentInput.classList.add("music-source");
+  contentInput.placeholder = isMusic
+    ? MUSIC_PLACEHOLDER
+    : isNewspaper
     ? "Write the newspaper story here.\n\n" +
       "Authentic newspaper tropes & syntax:\n" +
       "# Story headline (used when the headline field is blank)\n" +
@@ -1463,8 +1476,76 @@ function renderDocumentDetail(item: LootItem): void {
     updateCounter();
     markDirty();
   };
+  if (isMusic) {
+    const { guide, toolbar, status } = createMusicGuide(contentInput, (score) => {
+      // A sheet still carrying its default name takes the score's title.
+      if (score.title && (!item.name.trim() || item.name === "Sheet music")) {
+        item.name = nameInput.value = score.title;
+        renderList();
+      }
+    });
+    detailEl.append(
+      guide,
+      toolbar,
+      status,
+      field("Music (ABC notation)", contentInput),
+      counter,
+      buildMusicPreview(doc, titleInput ? [contentInput, titleInput] : [contentInput]),
+    );
+    return;
+  }
   const { guide, toolbar } = buildDocumentSyntaxGuide(contentInput, isNewspaper);
   detailEl.append(guide, toolbar, field("Content", contentInput), counter);
+}
+
+/** A music sheet opens as two pages side by side; this fits the editor pane. */
+const MUSIC_PREVIEW_ZOOM = "0.55";
+
+/**
+ * Live staves under the notation box: ABC is easy to mistype, so the sheet
+ * is redrawn as the DM writes, with whatever the engraver could not read
+ * listed above it.
+ */
+function buildMusicPreview(
+  doc: LootDocument,
+  inputs: (HTMLInputElement | HTMLTextAreaElement)[],
+): HTMLElement {
+  const box = el("div", "music-preview");
+  const warningList = el("ul", "music-warnings");
+  warningList.hidden = true;
+  const wrap = el("div", "preview-wrap");
+  const stage = el("div", "paper-stage");
+  stage.style.setProperty("--zoom", MUSIC_PREVIEW_ZOOM);
+  wrap.append(stage);
+  box.append(warningList, wrap);
+
+  stage.addEventListener(MUSIC_RENDER_EVENT, (event) => {
+    stage.style.minHeight = "";
+    const { warnings } = (event as CustomEvent<MusicRenderDetail>).detail;
+    warningList.replaceChildren();
+    for (const warning of warnings) {
+      const row = el("li");
+      row.textContent = warning;
+      warningList.append(row);
+    }
+    warningList.hidden = warnings.length === 0;
+  });
+
+  const draw = () => {
+    // Hold the height while the staves are redrawn, so the pane does not jump.
+    stage.style.minHeight = doc.content.trim() ? `${stage.offsetHeight}px` : "";
+    warningList.hidden = true;
+    renderDocument(stage, doc);
+  };
+  let timer: number | undefined;
+  for (const input of inputs) {
+    input.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(draw, 300);
+    });
+  }
+  draw();
+  return box;
 }
 
 /** Style tab: paper style / condition / font pickers over a live preview. */
@@ -1481,6 +1562,10 @@ function renderStyleTab(item: LootItem, doc: LootDocument): void {
     const previousDefaultIcon = DOC_STYLE_META[doc.style].icon;
     const previousDefaultFont = STYLE_DEFAULT_FONT[doc.style];
     doc.style = styleSelect.value as typeof doc.style;
+    // A blank paper turned into a music sheet gets the example tune; an
+    // untouched example does not follow the paper into another style.
+    if (doc.style === "music" && !doc.content.trim()) doc.content = MUSIC_EXAMPLE;
+    else if (doc.style !== "music" && doc.content === MUSIC_EXAMPLE) doc.content = "";
     if (item.icon === previousDefaultIcon) {
       item.icon = DOC_STYLE_META[doc.style].icon;
     }
@@ -1589,7 +1674,7 @@ function renderStyleTab(item: LootItem, doc: LootDocument): void {
 
   const wrap = el("div", "preview-wrap");
   const stage = el("div", "paper-stage");
-  stage.style.setProperty("--zoom", "0.95");
+  stage.style.setProperty("--zoom", doc.style === "music" ? MUSIC_PREVIEW_ZOOM : "0.95");
   renderDocument(stage, doc);
   wrap.append(stage);
   detailEl.append(row);

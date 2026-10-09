@@ -6,6 +6,7 @@ import {
 } from "./types";
 import { renderNewspaperDocument } from "./newspaperRender";
 import { PAGE_BREAK_LINE, renderMarkdownInto, splitOutsideInserts } from "./markdown";
+import { renderMusicInto, type MusicScore } from "./musicSheet";
 
 /**
  * A line of 3+ dashes (`---`) forces a page/section break. Content often
@@ -14,11 +15,11 @@ import { PAGE_BREAK_LINE, renderMarkdownInto, splitOutsideInserts } from "./mark
  */
 
 /*
- * Every page starts exactly one paper-width (38em, see .paper in paper.css)
- * after the previous one. The column gap comes from the paper's margins
- * (--pad-x) and is read back from CSS at layout time.
+ * Every page starts exactly one paper-width (--paper-w, see .paper in
+ * paper.css) after the previous one. The width and the column gap (the
+ * paper's margins, --pad-x) are read back from CSS at layout time.
  */
-const PAGE_STEP_EM = 38;
+const DEFAULT_PAPER_EM = 38;
 
 export interface RenderedDocument {
   /** True when the document renders as flippable pages. */
@@ -29,7 +30,7 @@ export interface RenderedDocument {
   prev(): void;
   goTo(page: number): void;
   getPage(): number;
-  /** Physical, one-based pages; newspapers show two pages per spread. */
+  /** Physical, one-based pages; newspapers and music show two per spread. */
   getPosition(): DocumentPagePosition | undefined;
 }
 
@@ -96,25 +97,31 @@ export function renderDocument(
   // Normalize Windows/old-Mac line endings so line-anchored parsing works
   // on content pasted from anywhere.
   const raw = doc.content.replace(/\r\n?/g, "\n");
-  const content = raw.trim() ? raw : "(This page is blank.)";
-  const segments = splitOutsideInserts(content, (line) => PAGE_BREAK_LINE.test(line))
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
-  if (segments.length === 0) segments.push("(This page is blank.)");
-  segments.forEach((segment, index) => {
-    if (index > 0) {
-      // Between segments: a hard page break, or a section divider when
-      // the document is one continuous sheet.
-      const divider = document.createElement("div");
-      divider.className = paged ? "page-break" : "text-divider";
-      body.append(divider);
-    }
-    renderMarkdownInto(body, segment, {
-      dropCapFirstParagraph: doc.style === "book" && index === 0,
+  // Sheet music is ABC notation, engraved as staves instead of set as text.
+  let score: MusicScore | undefined;
+  if (doc.style === "music") {
+    score = renderMusicInto(body, raw, font);
+  } else {
+    const content = raw.trim() ? raw : "(This page is blank.)";
+    const segments = splitOutsideInserts(content, (line) => PAGE_BREAK_LINE.test(line))
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
+    if (segments.length === 0) segments.push("(This page is blank.)");
+    segments.forEach((segment, index) => {
+      if (index > 0) {
+        // Between segments: a hard page break, or a section divider when
+        // the document is one continuous sheet.
+        const divider = document.createElement("div");
+        divider.className = paged ? "page-break" : "text-divider";
+        body.append(divider);
+      }
+      renderMarkdownInto(body, segment, {
+        dropCapFirstParagraph: doc.style === "book" && index === 0,
+      });
     });
-  });
+  }
 
-  let handle = FLOW_HANDLE;
+  let handle = score ? { ...FLOW_HANDLE, relayout: score.relayout } : FLOW_HANDLE;
   if (paged) {
     // Multi-column layout does the real work: the browser flows text into
     // page-sized columns (honoring `break-before` for manual breaks) and
@@ -125,6 +132,13 @@ export function renderDocument(
     pages.className = "paper-pages";
     if (title) pages.append(title); // heading lives on the first page only
     pages.append(body);
+    // Sheet music opens like a folder on a music stand: two pages side by
+    // side, unless the tune fits on one. The marker ends the content, so its
+    // column is the last page (the pages box itself is two pages wide then,
+    // which makes its scroll width useless for counting).
+    const spread = doc.style === "music";
+    const endMark = document.createElement("div");
+    if (spread) pages.append(endMark);
     clip.append(pages);
     paper.append(clip);
 
@@ -142,30 +156,46 @@ export function renderDocument(
 
     let page = 0;
     let count = 1;
+    // Pages turned at once, and the last page showing: a spread starts on
+    // an even index and may end the document on its left page.
+    const step = spread ? 2 : 1;
+    const lastShown = (): number => Math.min(page + step, count) - 1;
     const setPage = (target: number): void => {
       page = Math.max(0, Math.min(count - 1, target));
+      page -= page % step;
       paper.style.setProperty("--page", String(page));
-      label.textContent = `${page + 1} / ${count}`;
+      label.textContent = lastShown() > page
+        ? `${page + 1}–${lastShown() + 1} / ${count}`
+        : `${page + 1} / ${count}`;
       prevBtn.disabled = page === 0;
-      nextBtn.disabled = page === count - 1;
+      nextBtn.disabled = lastShown() === count - 1;
       if (paper.isConnected) onPageChange?.();
     };
     const relayout = (): void => {
+      score?.relayout();
       // Pictures size themselves against the real page height (see the
       // md-figure rules in paper.css); set it before counting pages.
       // (The pages box, not the clip: the clip also spans the margins.)
       paper.style.setProperty("--page-px", `${pages.clientHeight}px`);
-      const em = parseFloat(getComputedStyle(paper).fontSize) || 16;
+      const paperStyle = getComputedStyle(paper);
+      const em = parseFloat(paperStyle.fontSize) || 16;
+      const stepEm = parseFloat(paperStyle.getPropertyValue("--paper-w")) || DEFAULT_PAPER_EM;
       const gap = parseFloat(getComputedStyle(pages).columnGap) || 0;
-      count = Math.max(
-        1,
-        Math.round((pages.scrollWidth + gap) / (PAGE_STEP_EM * em)),
-      );
+      if (spread) {
+        const offset = endMark.getBoundingClientRect().left - pages.getBoundingClientRect().left;
+        count = Math.max(1, Math.floor(offset / (stepEm * em) + 0.5) + 1);
+        paper.classList.toggle("paper-spread", count > 1);
+      } else {
+        count = Math.max(
+          1,
+          Math.round((pages.scrollWidth + gap) / (stepEm * em)),
+        );
+      }
       nav.hidden = count <= 1;
       setPage(page);
     };
-    prevBtn.onclick = () => setPage(page - 1);
-    nextBtn.onclick = () => setPage(page + 1);
+    prevBtn.onclick = () => setPage(page - step);
+    nextBtn.onclick = () => setPage(page + step);
 
     // Measure once attached, then again whenever the text's size really
     // changes: web fonts arriving (their metrics change how much fits on a
@@ -193,11 +223,11 @@ export function renderDocument(
     handle = {
       paged: true,
       relayout,
-      next: () => setPage(page + 1),
-      prev: () => setPage(page - 1),
+      next: () => setPage(page + step),
+      prev: () => setPage(page - step),
       goTo: (target) => setPage(target),
       getPage: () => page,
-      getPosition: () => ({ page: page + 1, lastPage: page + 1, pageCount: count }),
+      getPosition: () => ({ page: page + 1, lastPage: lastShown() + 1, pageCount: count }),
     };
   } else {
     if (title) paper.append(title);

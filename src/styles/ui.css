@@ -930,6 +930,57 @@ label.field > span {
   margin-top: 2px;
 }
 
+/* Sheet music: ABC notation source and its live staves. */
+textarea.music-source {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.music-preview {
+  margin-top: 8px;
+}
+
+.music-preview .preview-wrap {
+  max-height: none;
+}
+
+.music-import-status {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: rgba(201, 162, 39, 0.08);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.music-import-status.error {
+  border-color: rgba(220, 80, 60, 0.6);
+  background: rgba(220, 80, 60, 0.1);
+}
+
+.music-import-status[hidden] {
+  display: none;
+}
+
+.music-warnings {
+  margin: 0 0 6px;
+  padding: 6px 8px 6px 26px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--gold-bright, #f59e0b);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.music-warnings[hidden] {
+  display: none;
+}
+
 .tabs .tab-preview {
   margin-left: auto;
 }
@@ -1093,6 +1144,35 @@ label.field > span {
 
 .drag-handle:hover {
   color: var(--gold-bright);
+}
+
+/* Master Loot panel: groups of containers the GM can fold away. */
+.group-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px 0 6px;
+}
+
+.container-group .folder-head {
+  margin: 4px 0 6px;
+}
+
+.container-group .group-rows[hidden] {
+  display: none;
+}
+
+/* An empty, open group still needs somewhere to drop a container. */
+.container-group:not([data-group-id="~ungrouped"]) .group-rows:empty::after {
+  content: "Drag containers here";
+  display: block;
+  padding: 8px;
+  margin-bottom: 6px;
+  border: 1px dashed var(--border-soft);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .container-row.dragging {

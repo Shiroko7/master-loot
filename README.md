@@ -14,6 +14,15 @@ a handout.
   to file them (drag onto empty list space to un-file). Double-click or ✎
   renames, ✕ dissolves a folder while keeping its items. Players see the same
   collapsible sections in the loot popup; empty folders stay GM-only.
+- **Container groups**: in a busy scene, the GM's **Loot** panel can file
+  containers into groups (e.g. one per location or faction). **📁 + Group**
+  creates one; drag a container by its ⠿ handle onto a group to file it, or
+  back under *Ungrouped*. Click a heading to fold that group away, or use
+  **Collapse all / Expand all**; a folded group still takes a container
+  dropped on its heading. Double-click or ✎ renames, ✕ dissolves a group
+  while keeping its containers. Groups are saved with the scene and are
+  GM-only (players see the plain list of what is lootable); which groups are
+  folded is remembered per browser.
 - **5e.tools import**: paste an item link (e.g.
   `https://5e.tools/items.html#armor%20of%20invulnerability_xdmg`) into the editor's
   import box. The item is fetched, cleaned of 5etools markup and shown as a preview —
@@ -54,6 +63,35 @@ a handout.
   either default. A paragraph wrapped in `*asterisks*` renders as an
   editorial note in a neutral serif — the narrator describing the object
   (e.g. `*Several pages are torn out.*`) rather than ink written on it.
+- **Music sheets**: **+ Music** (or the *Music sheet* style of any document)
+  adds a song written as staff notation: a bard's tune, a hymn, a coded
+  melody. The content is [ABC notation](https://abcnotation.com/learn), a
+  plain-text way of writing music (`C D E F | G A B c |`), engraved onto the
+  paper as staves with title, chord names and lyrics (`w:` lines) in the
+  document's font. A new sheet starts with an example to edit or replace
+  (Beethoven's *Ode to Joy*, with lyrics). Only the notes are required; a header (`T:` title, `M:`
+  meter, `L:` note length, `K:` key) is optional, and `X:` starts another tune
+  on the same sheet. Tunes from abcnotation.com or thesession.org paste in
+  as they are. The editor redraws the staves as you type and lists anything
+  it could not read; the notation guide above the text box has a cheat sheet
+  and quick-insert buttons. Lines are fitted to the page and the reader's text
+  size enlarges the notes. Like a folder on a music stand, a sheet opens as
+  **two pages side by side** and turns two at a time (pages break between
+  staff lines); a tune that fits on one page shows just that page. Paper
+  conditions work as for other documents, and the Continuous layout gives
+  one long sheet instead.
+- **MusicXML import**: in a music sheet's Write tab, **📂 Import MusicXML…**
+  (or dropping the file on the text box) takes a score exported from
+  MuseScore, Finale, Sibelius, Dorico and others (`.musicxml`, `.xml`, or
+  compressed `.mxl`) and converts it to the sheet's ABC notation, which stays
+  editable. It carries over title and composer, every part, staff and voice,
+  clefs, key and time signatures and their changes, notes, rests, chords,
+  tuplets, grace notes, accidentals, ties, slurs, beams, repeats and endings,
+  lyrics (all verses), chord symbols, tempo, dynamics, hairpins, text
+  directions, articulations, ornaments and fingerings. Page layout, tablature
+  staves, cue notes and instrument names are left out. A score longer than
+  one document (10,000 characters of notation) is cut after the last measure
+  that fits, and the editor says which measures were imported.
 - Readers can adjust **text size** and **zoom** independently; the preference is
   remembered per browser (localStorage).
 - The **Players** tab shows everyone's live viewing status, including the open
@@ -111,6 +149,10 @@ npx playwright install chromium
 npm run test:all
 npm run build
 ```
+
+`test:browser` also engraves music sheets (`/test/browser/music.html` is an
+inspectable example): notes, lyrics and fonts, repaired headers, engraver
+warnings, text size, and page breaks between staff lines.
 
 `test:browser` covers all four newspaper compositions and the saved
 legacy preset names with 0–10 pictures, measured
@@ -174,6 +216,8 @@ Once deployed, install with `https://<your-site>.netlify.app/manifest.json`.
 | `src/editor.ts`         | GM editor with live paper preview and localStorage restore  |
 | `src/fiveETools.ts`     | 5e.tools link parsing, data fetching and item conversion    |
 | `src/paperRender.ts`    | Shared, XSS-safe paper renderer                             |
+| `src/musicSheet.ts`     | Music sheets: ABC notation engraved as staves (abcjs)       |
+| `src/musicXml.ts`       | MusicXML (.musicxml / .mxl) to ABC converter for imports    |
 | `src/styles/paper.css`  | Letter / scroll / book / journal styles + paper conditions  |
 
 Baseline scope: players **view** loot; taking/claiming items is a future feature
