@@ -395,7 +395,8 @@ function render(items: Item[]): void {
   panel.append(header);
 
   const body = el("div", "panel-body");
-  const visible = loot && (loot.enabled || role === "GM");
+  // Players see nothing of a token the GM has hidden, even with it open.
+  const visible = loot && (role === "GM" || (loot.enabled && token?.visible !== false));
   viewReporter?.show(visible ? { kind: "loot", id: tokenId, name: tokenName } : null);
   takeAllowed = !!loot && (role === "GM" || canPlayersTake(loot));
   if (visible && loot.items.length > 0 && loot.takeable === false) {

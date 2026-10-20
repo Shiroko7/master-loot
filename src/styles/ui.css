@@ -2578,3 +2578,12 @@ body.window-resizing .window-resize-handle {
 .lightbox-toggle {
   min-width: 2.6em;
 }
+
+/* A group being dragged to a new place in the Loot panel. */
+.container-group.dragging {
+  opacity: 0.5;
+}
+
+.container-group .folder-head .drag-handle {
+  padding: 0 2px;
+}

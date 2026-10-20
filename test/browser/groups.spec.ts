@@ -4,7 +4,12 @@ import type { ContainerGroup } from "../../src/containerGroups";
 
 declare global {
   interface Window {
-    groupsTest: { metadata(): Record<string, unknown>; changeScene(): void; reopen(user: string): void };
+    groupsTest: {
+      metadata(): Record<string, unknown>;
+      changeScene(): void;
+      setVisible(id: string, visible: boolean): void;
+      reopen(user: string): void;
+    };
   }
 }
 
@@ -97,4 +102,33 @@ test("containers are filed into groups by dragging, and groups fold away", async
   await expect(again.locator(".folder-label", { hasText: "Crows" })).toHaveCount(0);
   await expect(again.locator(".container-row")).toHaveCount(6);
   await expect(section(again, "Ungrouped").locator(".folder-count")).toHaveText("5");
+});
+
+test("groups are reordered by dragging their heading's handle; Ungrouped stays on top", async ({ page }) => {
+  const { gm } = await open(page);
+  for (const name of ["Crows", "Sect", "Town"]) await addGroup(gm, name);
+  await grip(gm, "Messagercrow").dragTo(section(gm, "Crows").locator(".group-rows"));
+  await expect(section(gm, "Crows").locator(".folder-count")).toHaveText("1");
+  const groupGrip = (name: string) => section(gm, name).locator(".folder-head .drag-handle");
+
+  await groupGrip("Town").dragTo(section(gm, "Crows").locator(".folder-head"), { targetPosition: { x: 150, y: 2 } });
+  await expect.poll(async () => (await groups(page)).map((group) => group.name)).toEqual(["Town", "Crows", "Sect"]);
+  await expect(gm.locator(".folder-label")).toHaveText(["Ungrouped", "Town", "Crows", "Sect"]);
+  // Groups keep their containers when the list is rearranged.
+  expect((await groups(page))[1].tokens).toEqual(["crow"]);
+  await expect(section(gm, "Crows").locator(".folder-count")).toHaveText("1");
+
+  // Dropped above Ungrouped it still lands below it.
+  await groupGrip("Sect").dragTo(section(gm, "Ungrouped").locator(".folder-head"), { targetPosition: { x: 150, y: 2 } });
+  await expect(gm.locator(".folder-label")).toHaveText(["Ungrouped", "Sect", "Town", "Crows"]);
+});
+
+test("players never see the loot of a token the GM has hidden", async ({ page }) => {
+  const { gm, alice } = await open(page);
+  expect(await names(alice)).toContain("Lee Ji-Woo");
+  await page.evaluate(() => window.groupsTest.setVisible("lee", false));
+  await expect.poll(() => names(alice)).not.toContain("Lee Ji-Woo");
+  await expect(gm.locator(".container-row", { hasText: "Lee Ji-Woo" })).toHaveCount(1);
+  await page.evaluate(() => window.groupsTest.setVisible("lee", true));
+  await expect.poll(() => names(alice)).toContain("Lee Ji-Woo");
 });

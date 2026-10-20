@@ -531,12 +531,13 @@ export class TransferManager {
         }
 
         // Only players ask the GM to take; the GM's own takes run locally.
-        if (!canPlayersTake(loot)) {
+        // A hidden token's loot is out of the players' reach too.
+        if (!canPlayersTake(loot) || token.visible === false) {
           await NetworkProtocol.broadcast({
             action: "TRANSFER_RESULT",
             transferId: msg.transferId,
             success: false,
-            error: loot.enabled
+            error: loot.enabled && token.visible !== false
               ? "The GM hasn't allowed taking from this yet."
               : "There is nothing to loot here.",
           });

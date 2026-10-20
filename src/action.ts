@@ -77,6 +77,8 @@ let renamingGroupId: string | null = null;
 let renameInput: HTMLInputElement | null = null;
 /** Collapsed group the dragged row is hovering; it lands there on drop. */
 let dropSection: HTMLElement | null = null;
+/** Group section being dragged to a new place in the list. */
+let draggingGroup: HTMLElement | null = null;
 
 /** Which groups are folded away is this GM's own view, kept per browser. */
 const COLLAPSED_KEY = "master-loot:collapsed-groups";
@@ -188,6 +190,15 @@ async function saveGroups(groups: ContainerGroup[]): Promise<void> {
   } catch (error) {
     console.error("Master Loot: failed to save container groups", error);
   }
+}
+
+/** After dragging a group: groups in the order their sections now sit. */
+function saveGroupOrder(body: HTMLElement): void {
+  const order = [...body.querySelectorAll<HTMLElement>(".container-group")]
+    .map((section) => section.dataset.groupId);
+  const rank = (group: ContainerGroup) => order.indexOf(group.id);
+  deferredItems = null;
+  void saveGroups([...containerGroups].sort((a, b) => rank(a) - rank(b)));
 }
 
 function addGroup(): void {
@@ -880,6 +891,20 @@ function buildGroupHead(
   group?: ContainerGroup,
 ): HTMLElement {
   const head = el("div", "folder-head");
+  if (group) {
+    const grip = el("span", "drag-handle");
+    grip.textContent = "⠿";
+    grip.title = "Drag to reorder groups";
+    // As with rows, only a grab on the handle drags the whole section.
+    grip.onpointerdown = () => {
+      const section = head.parentElement;
+      if (!section) return;
+      section.draggable = true;
+      window.addEventListener("pointerup", () => { section.draggable = false; }, { once: true });
+    };
+    grip.onclick = (event) => event.stopPropagation();
+    head.append(grip);
+  }
   const chevron = el("span", "chev");
   chevron.textContent = collapsedGroups.has(id) ? "▸" : "▾";
   head.append(chevron);
@@ -1051,7 +1076,7 @@ function buildContainerRow(item: Item, loot: LootContainer, body: HTMLElement): 
 function render(items: Item[]): void {
   lastItems = items;
   void renderStorage();
-  if (draggingRow || (renameInput?.isConnected && document.activeElement === renameInput)) {
+  if (draggingRow || draggingGroup || (renameInput?.isConnected && document.activeElement === renameInput)) {
     deferredItems = items;
     return;
   }
@@ -1076,7 +1101,8 @@ function render(items: Item[]): void {
   const containers = items
     .map((item) => ({ item, loot: getLoot(item) }))
     .filter((entry) => entry.loot !== undefined)
-    .filter((entry) => role === "GM" || entry.loot!.enabled);
+    // A token the GM has hidden takes its loot with it.
+    .filter((entry) => role === "GM" || (entry.loot!.enabled && entry.item.visible !== false));
 
   const position = new Map(containerOrder.map((id, index) => [id, index]));
   const ordered = containers
@@ -1121,6 +1147,22 @@ function render(items: Item[]): void {
       if (head) wrap.append(head);
       wrap.append(rows);
       body.append(wrap);
+      if (id === UNGROUPED_ID) return;
+      // Row drags bubble up here too; only the section's own drag counts.
+      wrap.ondragstart = (event) => {
+        if (event.target !== wrap) return;
+        draggingGroup = wrap;
+        wrap.classList.add("dragging");
+        event.dataTransfer?.setData("text/plain", id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      };
+      wrap.ondragend = (event) => {
+        if (event.target !== wrap) return;
+        wrap.classList.remove("dragging");
+        wrap.draggable = false;
+        draggingGroup = null;
+        saveGroupOrder(body);
+      };
     };
     // Without groups the list looks as it always did: no headings at all.
     section(
@@ -1137,6 +1179,21 @@ function render(items: Item[]): void {
       dropSection = null;
     };
     body.ondragover = (event) => {
+      if (draggingGroup) {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        // Groups move among themselves; "Ungrouped" always stays on top.
+        const others = [...body.querySelectorAll<HTMLElement>(".container-group")].filter(
+          (section) => section !== draggingGroup && section.dataset.groupId !== UNGROUPED_ID,
+        );
+        const next = others.find((other) => {
+          const rect = other.getBoundingClientRect();
+          return event.clientY < rect.top + rect.height / 2;
+        });
+        if (next) body.insertBefore(draggingGroup, next);
+        else body.append(draggingGroup);
+        return;
+      }
       if (!draggingRow) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";

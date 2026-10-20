@@ -15,7 +15,7 @@ const scene: [string, string, boolean][] = [
   ["ye", "Ye Rin", true], ["chun", "Chun Hua", false], ["zhao", "Zhao Feng", false],
 ];
 const items = scene.map(([id, name, enabled]) =>
-  ({ id, name, type: "IMAGE", metadata: { [LOOT_KEY]: container(name, enabled) } })) as unknown as Item[];
+  ({ id, name, type: "IMAGE", visible: true, metadata: { [LOOT_KEY]: container(name, enabled) } })) as unknown as Item[];
 const sceneMetadata: Metadata = {};
 const frames = new Map<string, { el: HTMLIFrameElement; player: Player }>();
 const room = document.querySelector("#room")!;
@@ -70,6 +70,12 @@ Object.assign(window, { groupsTest: {
   /** Any scene change (a token moved) re-sends the items to every panel. */
   changeScene() {
     for (const { el } of frames.values()) send(el, "OBR_SCENE_ITEMS_EVENT_CHANGE", { items });
+  },
+  /** The GM hides or reveals a token on the map. */
+  setVisible(id: string, visible: boolean) {
+    const item = items.find((candidate) => candidate.id === id)!;
+    item.visible = visible;
+    this.changeScene();
   },
   /** Closes and reopens a panel; the scene (and its metadata) stays. */
   reopen(user: string) {
