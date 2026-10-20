@@ -12,6 +12,7 @@ import {
   renderInlineMarkdown,
   normalizeImageUrl,
   createInsert,
+  collectPictureRows,
   splitOutsideInserts,
   COLUMN_BREAK_LINE,
   INSERT_FENCE,
@@ -34,6 +35,8 @@ export type NewspaperFlowBlock =
   /** `::: Title|look` … `:::`: a framed document printed within the story. */
   | { kind: "insert"; header: string; text: string }
   | { kind: "image"; image: NewspaperImage }
+  /** `![a](x) | ![b](y)` lines: pictures side by side, one row per line. */
+  | { kind: "gallery"; rows: NewspaperImage[][] }
   /** `\column`: the story continues in the next column (or page). */
   | { kind: "column-break" };
 
@@ -52,6 +55,37 @@ export interface ParsedNewspaperPage {
 export function resolveNewspaperLayout(preferred?: NewspaperLayout): Exclude<NewspaperLayout, "auto"> {
   const layout = normalizeNewspaperLayout(preferred);
   return layout === "auto" ? "split-lead" : layout;
+}
+
+const PRINT_FILTERS: readonly string[] = ["halftone", "engraving", "sepia", "color-press", "raw"];
+
+/** `![caption|filter|width|auto](url)`: options come last, in any order. */
+function parseNewspaperImage(alt: string, url: string): { image: NewspaperImage; auto: boolean } {
+  let caption = alt ? alt.trim() : undefined;
+  let filter: NewspaperPrintFilter | undefined;
+  let width: NewspaperImage["width"];
+  let auto = false;
+  if (caption && caption.includes("|")) {
+    const parts = caption.split("|");
+    while (parts.length > 1) {
+      const candidate = parts[parts.length - 1].trim().toLowerCase();
+      if (PRINT_FILTERS.includes(candidate)) {
+        filter = candidate as NewspaperPrintFilter;
+      } else if (candidate === "page" || candidate === "wide" || candidate === "column") {
+        // `|wide` reads better than `|page` (which means a whole-page
+        // picture in other document styles); both span every column.
+        width = candidate === "column" ? "column" : "page";
+      } else if (candidate === "auto") {
+        auto = true;
+      } else break;
+      parts.pop();
+    }
+    caption = parts.join("|").trim();
+  }
+  return {
+    image: { url: normalizeImageUrl(url.trim()), caption: caption || undefined, filter, width },
+    auto,
+  };
 }
 
 /**
@@ -127,7 +161,8 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
       insert = undefined;
     };
 
-    for (const rawLine of lines) {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const rawLine = lines[lineIndex];
       const line = rawLine.trim();
       // Inside an insert every line (blank ones too) is its document's own
       // Markdown, until a bare `:::` closes it.
@@ -151,39 +186,21 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
         blocks.push({ kind: "column-break" });
         continue;
       }
+      const pictureRows = line.includes("![") ? collectPictureRows(lines, lineIndex) : null;
+      if (pictureRows) {
+        flushParagraph();
+        const rows = pictureRows.rows.map((row) => row.map((cell) => parseNewspaperImage(cell.alt, cell.url).image));
+        pageImages.push(...rows.flat());
+        blocks.push({ kind: "gallery", rows });
+        lineIndex = pictureRows.end - 1;
+        continue;
+      }
       if (line.includes("![") && /!\[([^\]]*)\]\(([^)]+)\)/.test(line)) {
         const parts = line.split(/(!\[[^\]]*\]\([^)]+\))/g);
         for (const part of parts) {
           const m = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(part.trim());
           if (m) {
-            let caption = m[1] ? m[1].trim() : undefined;
-            const url = m[2].trim();
-            let filter: NewspaperPrintFilter | undefined;
-            let width: NewspaperImage["width"];
-            let auto = false;
-            if (caption && caption.includes("|")) {
-              const parts = caption.split("|");
-              while (parts.length > 1) {
-                const candidate = parts[parts.length - 1].trim().toLowerCase();
-                if (["halftone", "engraving", "sepia", "color-press", "raw"].includes(candidate)) {
-                  filter = candidate as NewspaperPrintFilter;
-                } else if (candidate === "page" || candidate === "wide" || candidate === "column") {
-                  // `|wide` reads better than `|page` (which means a whole-page
-                  // picture in other document styles); both span every column.
-                  width = candidate === "column" ? "column" : "page";
-                } else if (candidate === "auto") {
-                  auto = true;
-                } else break;
-                parts.pop();
-              }
-              caption = parts.join("|").trim();
-            }
-            const imgObj: NewspaperImage = {
-              url: normalizeImageUrl(url),
-              caption: caption || undefined,
-              filter,
-              width,
-            };
+            const { image: imgObj, auto } = parseNewspaperImage(m[1], m[2]);
             pageImages.push(imgObj);
             // `|auto` pictures belong to this story but not to a spot in it:
             // the layout places them like attached pictures (lead photo under
@@ -286,8 +303,8 @@ export function parseNewspaperPages(doc: LootDocument): ParsedNewspaperPage[] {
       blocks.push({ kind: "paragraph", text: "(Story continues on the back page.)" });
     } else if (paragraphs.length === 0 && blocks.length > 0) {
       const firstText = blocks.find(
-        (b): b is Exclude<NewspaperFlowBlock, { kind: "image" | "column-break" }> =>
-          b.kind !== "image" && b.kind !== "column-break",
+        (b): b is Exclude<NewspaperFlowBlock, { kind: "image" | "gallery" | "column-break" }> =>
+          b.kind !== "image" && b.kind !== "gallery" && b.kind !== "column-break",
       );
       if (firstText) {
         paragraphs.push(firstText.text);
@@ -329,11 +346,63 @@ function createPictureSlot(
   extraClass = "",
   onSizeChange: () => void = () => {},
 ): HTMLElement {
-  const filterType = img.filter || docFilter || "halftone";
   const slot = document.createElement("div");
   slot.className = `newspaper-slot ${extraClass}`.trim();
   if (img.width) slot.dataset.imageWidth = img.width;
+  slot.append(createPictureFigure(img, docFilter, onSizeChange));
+  return slot;
+}
 
+/**
+ * Pictures side by side in one slot, a row per authored line. Each picture
+ * takes a share of its row proportional to its aspect ratio (--img-ratio),
+ * so a row prints at one height across the full width. The slot's image
+ * height cap is split between the rows, and a row stops widening once it
+ * reaches its share of the cap (--row-ratio is the sum of its ratios).
+ * `|wide` on any picture spans the whole grid across every column.
+ */
+function createPictureGallery(
+  rows: NewspaperImage[][],
+  docFilter: NewspaperPrintFilter = "halftone",
+  onSizeChange: () => void = () => {},
+): HTMLElement {
+  const slot = document.createElement("div");
+  slot.className = "newspaper-slot newspaper-slot-col newspaper-gallery";
+  if (rows.flat().some((img) => img.width === "page")) slot.dataset.imageWidth = "page";
+  slot.style.setProperty("--gallery-rows", String(rows.length));
+  for (const images of rows) {
+    const row = document.createElement("div");
+    row.className = "newspaper-gallery-row";
+    row.style.setProperty("--row-count", String(images.length));
+    const ratios = new Map<HTMLImageElement, number>();
+    for (const img of images) {
+      const figure = createPictureFigure(img, docFilter, onSizeChange);
+      const imgEl = figure.querySelector<HTMLImageElement>("img")!;
+      const settle = (ratio: number) => {
+        ratios.set(imgEl, ratio);
+        if (ratios.size < images.length) return;
+        const total = [...ratios.values()].reduce((sum, value) => sum + value, 0);
+        row.style.setProperty("--row-ratio", total.toFixed(4));
+        onSizeChange();
+      };
+      imgEl.addEventListener("load", () => settle(imgEl.naturalWidth / imgEl.naturalHeight || 1));
+      imgEl.addEventListener("error", () => {
+        // The Imgur .png → .jpg retry swaps the source instead of failing.
+        if (!(imgEl.src.endsWith(".png") && imgEl.src.includes("i.imgur.com"))) settle(1);
+      });
+      row.append(figure);
+    }
+    slot.append(row);
+  }
+  return slot;
+}
+
+function createPictureFigure(
+  img: NewspaperImage,
+  docFilter: NewspaperPrintFilter,
+  onSizeChange: () => void,
+): HTMLElement {
+  const filterType = img.filter || docFilter || "halftone";
   const figure = document.createElement("figure");
   figure.className = `newspaper-figure newspaper-print-${filterType} aspect-unknown`;
 
@@ -407,9 +476,7 @@ function createPictureSlot(
     caption.append(renderInlineMarkdown(img.caption.trim()));
     figure.append(caption);
   }
-
-  slot.append(figure);
-  return slot;
+  return figure;
 }
 
 const DATELINE_REGEX = /^([A-Z][A-Z0-9\s,.'-]{2,32})\s*(?:—|–|--)\s+(.+)$/s;
@@ -535,6 +602,8 @@ function renderFlowBlock(
       return createInsert(block.header, block.text);
     case "image":
       return createPictureSlot(block.image, docFilter, "newspaper-slot-col");
+    case "gallery":
+      return createPictureGallery(block.rows, docFilter);
     case "column-break": {
       const marker = document.createElement("div");
       marker.className = "newspaper-column-break";
@@ -648,7 +717,8 @@ const activeRenderers = new WeakMap<HTMLElement, () => void>();
 
 /** Add unattached pictures between story blocks; inline pictures keep their anchors. */
 function storyBlocks(page: ParsedNewspaperPage): NewspaperFlowBlock[] {
-  const anchored = new Set(page.blocks.flatMap((block) => block.kind === "image" ? [block.image] : []));
+  const anchored = new Set(page.blocks.flatMap((block) =>
+    block.kind === "image" ? [block.image] : block.kind === "gallery" ? block.rows.flat() : []));
   const pictures = page.images.filter((img) => !anchored.has(img));
   const blocks: NewspaperFlowBlock[] = [];
   for (let index = 0; index <= page.blocks.length; index++) {
@@ -730,9 +800,13 @@ export function renderNewspaperDocument(root: HTMLElement, doc: LootDocument, on
     if (isLead) leadUsed = true;
     const element = block.kind === "image"
       ? createPictureSlot(block.image, doc.newspaperFilter, "newspaper-slot-col", schedule)
-      : renderFlowBlock(block, doc.newspaperFilter, isLead);
+      : block.kind === "gallery"
+        ? createPictureGallery(block.rows, doc.newspaperFilter, schedule)
+        : renderFlowBlock(block, doc.newspaperFilter, isLead);
     element.dataset.storyBlock = `${sectionIndex}-${blockIndex}`;
-    if (block.kind === "image" && section.blocks.includes(block)) element.dataset.inlineImage = "true";
+    if ((block.kind === "image" || block.kind === "gallery") && section.blocks.includes(block)) {
+      element.dataset.inlineImage = "true";
+    }
     return element;
   }));
 

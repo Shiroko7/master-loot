@@ -617,6 +617,68 @@
   transform: none;
 }
 
+/*
+ * Pictures side by side (`![a](x) | ![b](y)`, a row per line). Each picture
+ * grows in proportion to its aspect ratio (--ratio), so a row lines up at
+ * one height and spans the full width. A row only stops widening when it
+ * would get taller than its share of --img-max-h: --row-ratio (the sum of
+ * the row's ratios) turns that height into a width.
+ */
+.paper-body .md-gallery {
+  --gallery-gap: 0.6em;
+  --gallery-row-h: var(--img-max-h, 26em);
+  margin: 0.4em 0 1em;
+  clear: both;
+  break-inside: avoid;
+  text-indent: 0;
+}
+
+.paper-body .md-gallery-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--gallery-gap);
+  max-width: calc(var(--gallery-row-h) * var(--row-ratio, 1000) + var(--gallery-gap) * (var(--row-count, 1) - 1));
+  margin: 0 auto;
+}
+
+.paper-body .md-gallery-row + .md-gallery-row {
+  margin-top: var(--gallery-gap);
+}
+
+.paper-body .md-gallery .md-gallery-item {
+  flex: var(--ratio, 1) 1 0;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  float: none;
+}
+
+/* `|NN%` fixes that picture's share of the row. */
+.paper-body .md-gallery .md-figure-custom {
+  flex: 0 1 auto;
+}
+
+.paper-body .md-gallery .md-figure-frame {
+  width: 100%;
+}
+
+.paper-body .md-gallery .md-figure img {
+  max-height: none;
+}
+
+/* On pages, every row of a grid together fits on one page. */
+.paper-paged .paper-body .md-gallery {
+  --gallery-row-h: calc(var(--page-px, 30em) * 0.8 / var(--gallery-rows, 1) - 1.6em);
+}
+
+/* A table cell holding only a picture: the picture fills the cell. */
+.paper-body .md-figure-cell {
+  width: 100%;
+  margin: 0;
+  float: none;
+}
+
 /* D&D Tags */
 .md-tag {
   display: inline-block;
@@ -2187,3 +2249,34 @@ mark.md-highlight {
 .is-single .newspaper-spread { grid-template-columns: var(--newspaper-page-width); }
 .is-single .newspaper-spread::after { display: none; }
 .paper-newspaper .page-nav { font-size: .75em; bottom: 1em; }
+
+/*
+ * Pictures side by side in one slot, a row per authored line. Pictures grow
+ * by aspect ratio (--img-ratio) so a row prints at one height across the
+ * full width; the grid's height cap is shared between its rows, and a row
+ * stops widening once it reaches its share (--row-ratio sums its ratios).
+ */
+.newspaper-gallery {
+  --gallery-gap: .4em;
+}
+
+.newspaper-gallery-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--gallery-gap);
+  max-width: calc(var(--img-cap, var(--img-default, 18em)) / var(--gallery-rows, 1) * var(--row-ratio, 1000) + var(--gallery-gap) * (var(--row-count, 1) - 1));
+  margin: 0 auto;
+}
+
+.newspaper-gallery-row + .newspaper-gallery-row { margin-top: var(--gallery-gap); }
+.newspaper-gallery .newspaper-figure { flex: var(--img-ratio, 1) 1 0; min-width: 0; }
+.newspaper-gallery .newspaper-img-frame { width: 100%; }
+.newspaper-gallery .newspaper-img { width: 100%; min-width: 0; max-height: none; }
+
+/* Pictures open full size when clicked (see imageLightbox.ts). */
+.newspaper-figure,
+.paper-body .md-figure:not(.md-figure-broken),
+.picture-mount:not(.picture-missing) {
+  cursor: zoom-in;
+}

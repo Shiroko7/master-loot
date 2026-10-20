@@ -2511,3 +2511,70 @@ body.window-resizing .window-resize-handle {
 .container-row.storage-level-over .meta {
   color: #e2584a;
 }
+
+/* Full-size picture viewer (imageLightbox.ts), over the whole window. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 6, 3, 0.92);
+  color: var(--text);
+}
+
+.lightbox-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.lightbox-img {
+  /* margin: auto centers it without clipping when it overflows (1:1). */
+  margin: auto;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lightbox.is-actual .lightbox-stage { overflow: auto; }
+.lightbox.is-actual .lightbox-img { max-width: none; max-height: none; cursor: grab; }
+.lightbox.is-actual .lightbox-img:active { cursor: grabbing; }
+.lightbox.is-fit.is-zoomable .lightbox-img { cursor: zoom-in; }
+
+.lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  font-size: 13px;
+}
+
+.lightbox-caption {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.lightbox-size {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-bar a.btn-icon {
+  text-decoration: none;
+}
+
+.lightbox-toggle {
+  min-width: 2.6em;
+}

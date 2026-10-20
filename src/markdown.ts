@@ -362,6 +362,129 @@ export function createFigure(
  */
 const STANDALONE_IMAGE = /^!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))+)\)$/;
 
+/** One `![...](url)` starting exactly at `lastIndex`. */
+const IMAGE_AT = /!\[[^\]]*\]\((?:[^()]|\([^()]*\))+\)/y;
+
+/** `|---|:---:|`: the line under a table's header row. */
+const TABLE_DELIMITER = /^\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?$/;
+
+/**
+ * Splits a table row on its `|` separators. Pipes inside a picture
+ * (`![caption|small](url)`) are picture options, not cell borders.
+ */
+export function splitTableRow(line: string): string[] {
+  let text = line.trim();
+  if (text.startsWith("|")) text = text.slice(1);
+  if (text.endsWith("|")) text = text.slice(0, -1);
+  const cells: string[] = [];
+  let cell = "";
+  for (let i = 0; i < text.length;) {
+    IMAGE_AT.lastIndex = i;
+    const image = text[i] === "!" ? IMAGE_AT.exec(text) : null;
+    if (image) {
+      cell += image[0];
+      i += image[0].length;
+      continue;
+    }
+    if (text[i] === "|") {
+      cells.push(cell.trim());
+      cell = "";
+    } else cell += text[i];
+    i++;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+export interface PictureCell {
+  alt: string;
+  url: string;
+}
+
+/**
+ * A line holding nothing but pictures separated by `|` (outer pipes
+ * optional): `![a](x) | ![b](y)`. A lone picture is a row of one.
+ * Returns null for any other line.
+ */
+export function parsePictureRow(line: string): PictureCell[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("![")) return null;
+  const pictures: PictureCell[] = [];
+  for (const cell of splitTableRow(trimmed)) {
+    const match = STANDALONE_IMAGE.exec(cell);
+    if (!match) return null;
+    pictures.push({ alt: match[1], url: match[2] });
+  }
+  return pictures;
+}
+
+/**
+ * Pictures side by side: consecutive picture-row lines starting at `start`,
+ * when at least one of them holds two or more pictures. `end` is the index
+ * of the first line after them. Returns null when there is no such grid
+ * (including a picture header row over `|---|`, which is a real table).
+ */
+export function collectPictureRows(
+  lines: string[],
+  start: number,
+): { rows: PictureCell[][]; end: number } | null {
+  const rows: PictureCell[][] = [];
+  let end = start;
+  while (end < lines.length) {
+    const row = parsePictureRow(lines[end]);
+    if (!row) break;
+    rows.push(row);
+    end++;
+  }
+  if (!rows.some((row) => row.length > 1)) return null;
+  if (TABLE_DELIMITER.test(lines[start + 1]?.trim() ?? "")) return null;
+  return { rows, end };
+}
+
+/**
+ * Pictures side by side, one flex row per line. Every picture in a row gets
+ * a share of the width proportional to its aspect ratio, so the row lines
+ * up at one height and fills the width: no picture is shrunk to make room
+ * for a narrower one. `|NN%` fixes one picture's share instead.
+ */
+export function createPictureGrid(rows: PictureCell[][]): HTMLElement {
+  const grid = document.createElement("div");
+  grid.className = "md-gallery";
+  grid.style.setProperty("--gallery-rows", String(rows.length));
+  for (const cells of rows) {
+    const row = document.createElement("div");
+    row.className = "md-gallery-row";
+    row.style.setProperty("--row-count", String(cells.length));
+    const figures = cells.map((cell) => {
+      const figure = createFigure(cell.alt, cell.url, "block");
+      figure.classList.add("md-gallery-item");
+      return figure;
+    });
+    row.append(...figures);
+    // Cap the row's height (via its width) once every picture's proportions
+    // are known. Fixed-share pictures make the total unpredictable: no cap.
+    const ratios = new Map<HTMLElement, number>();
+    if (!figures.some((figure) => figure.classList.contains("md-figure-custom"))) {
+      figures.forEach((figure) => {
+        const img = figure.querySelector("img");
+        const settle = (ratio: number) => {
+          ratios.set(figure, ratio);
+          if (ratios.size < figures.length) return;
+          const total = [...ratios.values()].reduce((sum, value) => sum + value, 0);
+          row.style.setProperty("--row-ratio", total.toFixed(4));
+        };
+        if (!img) settle(1);
+        else {
+          img.addEventListener("load", () => settle(img.naturalWidth / img.naturalHeight || 1));
+          img.addEventListener("error", () => settle(1));
+        }
+      });
+    }
+    grid.append(row);
+  }
+  return grid;
+}
+
 export type InsertLook = "print" | "typed" | "official" | "note";
 const INSERT_LOOKS: readonly string[] = ["print", "typed", "official", "note"];
 
@@ -446,11 +569,16 @@ function parseMarkdownTable(lines: string[]): HTMLElement | null {
 
   if (!delimLine.includes("-")) return null;
 
-  const splitRow = (line: string): string[] => {
-    let trimmed = line.trim();
-    if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
-    if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
-    return trimmed.split("|").map((c) => c.trim());
+  const splitRow = splitTableRow;
+  // A cell holding only a picture shows it filling the cell, not as a small
+  // picture floated beside words.
+  const renderCell = (cell: HTMLElement, text: string): void => {
+    const picture = STANDALONE_IMAGE.exec(text);
+    if (picture) {
+      const figure = createFigure(picture[1], picture[2], "block");
+      figure.classList.add("md-figure-cell");
+      cell.append(figure);
+    } else cell.append(renderInlineMarkdown(text));
   };
 
   const headers = splitRow(headerLine);
@@ -474,7 +602,7 @@ function parseMarkdownTable(lines: string[]): HTMLElement | null {
   headers.forEach((h, i) => {
     const th = document.createElement("th");
     th.style.textAlign = alignments[i] || "left";
-    th.append(renderInlineMarkdown(h));
+    renderCell(th, h);
     headerTr.append(th);
   });
   thead.append(headerTr);
@@ -487,8 +615,7 @@ function parseMarkdownTable(lines: string[]): HTMLElement | null {
     headers.forEach((_, i) => {
       const td = document.createElement("td");
       td.style.textAlign = alignments[i] || "left";
-      const cellText = rowCells[i] ?? "";
-      td.append(renderInlineMarkdown(cellText));
+      renderCell(td, rowCells[i] ?? "");
       tr.append(td);
     });
     tbody.append(tr);
@@ -602,7 +729,15 @@ export function renderMarkdownInto(
       continue;
     }
 
-    // 5. Tables: | Header | Header |
+    // 5a. Pictures side by side: ![a](x) | ![b](y)
+    const pictureRows = collectPictureRows(rawLines, i);
+    if (pictureRows) {
+      target.append(createPictureGrid(pictureRows.rows));
+      i = pictureRows.end;
+      continue;
+    }
+
+    // 5b. Tables: | Header | Header |
     if (trimmed.startsWith("|") && i + 1 < rawLines.length && rawLines[i + 1].trim().startsWith("|")) {
       const tableLines: string[] = [];
       while (i < rawLines.length && rawLines[i].trim().startsWith("|")) {
@@ -685,6 +820,8 @@ export function renderMarkdownInto(
     while (
       i < rawLines.length &&
       rawLines[i].trim().length > 0 &&
+      // The first line always belongs here (e.g. a `|` line that is no table).
+      (paragraphLines.length === 0 ||
       !rawLines[i].trim().startsWith("```") &&
       !INSERT_FENCE.test(rawLines[i].trim()) &&
       !/^(#{1,6})\s+/.test(rawLines[i].trim()) &&
@@ -694,7 +831,8 @@ export function renderMarkdownInto(
       !/^[-*+]\s+/.test(rawLines[i].trim()) &&
       !/^\d+\.\s+/.test(rawLines[i].trim()) &&
       !rawLines[i].trim().startsWith("|") &&
-      !STANDALONE_IMAGE.test(rawLines[i].trim())
+      !STANDALONE_IMAGE.test(rawLines[i].trim()) &&
+      !collectPictureRows(rawLines, i))
     ) {
       paragraphLines.push(rawLines[i]);
       i++;

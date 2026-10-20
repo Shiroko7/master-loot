@@ -1,4 +1,5 @@
 import { renderIdCard } from "./idCard";
+import { enableImageLightbox } from "./imageLightbox";
 import { renderPicture } from "./pictureView";
 import { renderDocument, type RenderedDocument, type DocumentPagePosition } from "./paperRender";
 import {
@@ -134,6 +135,7 @@ export function createDocumentReader(options: {
   scroll.className = "doc-scroll";
   const stage = document.createElement("div");
   stage.className = "paper-stage";
+  enableImageLightbox(stage);
   scroll.append(stage);
   function reportPosition(): void {
     if (restoring) return;

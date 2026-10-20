@@ -710,3 +710,57 @@ test("\\column right after text overflowed into a new column adds no blank colum
   expect(empty).toBe(0);
   expect(normalize(result.text)).toBe(normalize(`${paragraphs.join(" ")} Afterword.`));
 });
+
+test("picture rows print side by side at one height, sharing the width by aspect ratio", async ({ page }) => {
+  const [portrait, landscape, square] = [picture(0), picture(1), picture(2)];
+  for (const wide of [false, true]) {
+    await render(page, { style: "newspaper", title: "Gazette", newspaperLayout: "split-lead",
+      content: `${paragraphs[0]}\n\n![Tower|engraving${wide ? "|wide" : ""}](${portrait.url}) | ![Harbor${wide ? "|wide" : ""}](${landscape.url})\n![Square](${square.url})\n\n${paragraphs[1]}` });
+    const result = await measure(page);
+    checkGeometry(result);
+    expect(normalize(result.text)).toBe(normalize(`${paragraphs[0]} ${paragraphs[1]}`));
+    const rows = await page.locator(".newspaper-gallery-row").evaluateAll(rows => rows.map(row => {
+      const slot = row.closest<HTMLElement>(".newspaper-slot")!;
+      return {
+        wide: slot.classList.contains("newspaper-slot-page"),
+        slotWidth: slot.getBoundingClientRect().width,
+        rowWidth: row.getBoundingClientRect().width,
+        images: Array.from(row.querySelectorAll("img"), img => {
+          const rect = img.getBoundingClientRect();
+          return { width: rect.width, height: rect.height, ratio: img.naturalWidth / img.naturalHeight };
+        }),
+      };
+    }));
+    expect(rows.map(row => row.images.length)).toEqual([2, 1]);
+    expect(rows[0].wide).toBe(wide);
+    const [tower, harbor] = rows[0].images;
+    // One shared height: the wider picture gets the bigger share, no letterboxing.
+    expect(Math.abs(tower.height - harbor.height)).toBeLessThan(1.5);
+    expect(harbor.width / tower.width).toBeCloseTo(harbor.ratio / tower.ratio, 1);
+    for (const row of rows) {
+      for (const image of row.images) expect(image.width / image.height).toBeCloseTo(image.ratio, 1);
+      // A row either spans its slot or stops at its height share; never overflows.
+      expect(row.rowWidth).toBeLessThanOrEqual(row.slotWidth + .5);
+    }
+  }
+});
+
+test("clicking a picture opens it at full resolution, and Escape closes only the viewer", async ({ page }) => {
+  const big = { url: `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="2000"><rect width="100%" height="100%" fill="#8a7"/></svg>')}` };
+  await render(page, { style: "newspaper", title: "Gazette", content: `${paragraphs[0]}\n\n![Huge map](${big.url})` });
+  await page.locator(".newspaper-figure").first().click();
+  const viewer = page.locator(".lightbox");
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator(".lightbox-size")).toHaveText("3000 × 2000 px");
+  await expect(viewer.locator(".lightbox-caption")).toHaveText("Huge map");
+  const fitted = await viewer.locator(".lightbox-img").boundingBox();
+  expect(fitted!.width).toBeLessThanOrEqual(1280);
+  expect(fitted!.height).toBeLessThan(1100);
+  await viewer.locator(".lightbox-img").click();
+  await expect(viewer).toHaveClass(/is-actual/);
+  expect(await viewer.locator(".lightbox-img").evaluate(img => img.getBoundingClientRect().width)).toBeCloseTo(3000, 0);
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  await expect(page.locator(".paper-newspaper")).toBeVisible();
+});

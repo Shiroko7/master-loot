@@ -4,11 +4,13 @@ import "@fontsource/caveat/400.css";
 import "../../src/styles/ui.css";
 import "../../src/styles/paper.css";
 import { renderNewspaperDocument, type RenderedDocument } from "../../src/newspaperRender";
+import { enableImageLightbox } from "../../src/imageLightbox";
 import type { LootDocument } from "../../src/types";
 import { newspaperRegressionFixture } from "../newspaperFixture";
 
 document.body.style.cssText = "margin:0;background:#272522";
 const stage = document.querySelector<HTMLElement>("#stage")!;
+enableImageLightbox(stage);
 let rendered: RenderedDocument;
 const api = {
   render(doc: LootDocument) { rendered = renderNewspaperDocument(stage, doc); },

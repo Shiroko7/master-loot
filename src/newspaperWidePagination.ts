@@ -1,4 +1,4 @@
-import { fillNewspaperColumn } from "./newspaperPagination";
+import { fillNewspaperColumn, pictureCapTarget, pictureHeight } from "./newspaperPagination";
 import type { NewspaperLayout } from "./types";
 
 /** Full-width pictures divide a page into measured reading regions. */
@@ -74,9 +74,10 @@ export function fillNewspaperWidePage(
     if (wideIndex === 0) {
       const picture = widePicture(queue[0]);
       if (picture.offsetHeight > remaining) {
-        const image = picture.querySelector<HTMLImageElement>("img");
-        const available = image ? remaining - (picture.offsetHeight - image.clientHeight) : 0;
-        if (image && available >= Math.min(64, image.clientHeight * .5)) {
+        const image = pictureCapTarget(picture);
+        const height = pictureHeight(picture);
+        const available = image ? remaining - (picture.offsetHeight - height) : 0;
+        if (image && available >= Math.min(64, height * .5)) {
           image.style.setProperty("--img-cap", `${Math.floor(available)}px`);
         }
       }

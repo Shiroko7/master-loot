@@ -5,6 +5,27 @@ function fits(node: HTMLElement, column: HTMLElement): boolean {
   return node.getBoundingClientRect().bottom <= column.getBoundingClientRect().bottom + FIT_EPSILON;
 }
 
+/**
+ * Height of a picture slot's printed image: for side-by-side pictures, the
+ * tallest picture of every row added up (captions excluded either way).
+ */
+export function pictureHeight(slot: HTMLElement): number {
+  if (!slot.classList.contains("newspaper-gallery")) {
+    return slot.querySelector("img")?.getBoundingClientRect().height ?? 0;
+  }
+  return Array.from(slot.querySelectorAll(".newspaper-gallery-row"), (row) =>
+    Math.max(0, ...Array.from(row.querySelectorAll("img"), (img) => img.getBoundingClientRect().height)),
+  ).reduce((sum, height) => sum + height, 0);
+}
+
+/**
+ * The element whose --img-cap limits pictureHeight(): the picture itself, or
+ * a whole side-by-side grid (whose rows share the cap).
+ */
+export function pictureCapTarget(slot: HTMLElement): HTMLElement | null {
+  return slot.classList.contains("newspaper-gallery") ? slot : slot.querySelector("img");
+}
+
 /** Split the rendered DOM, preserving nested emphasis, links, punctuation and whitespace. */
 function splitAt(source: HTMLElement, offset: number): [HTMLElement, HTMLElement] {
   const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
@@ -107,9 +128,9 @@ export function fillNewspaperColumn(column: HTMLElement, queue: HTMLElement[]): 
     if (isPicture) {
       // Prefer a smaller proportional illustration over an early column break.
       // Include its frame and caption; do not shrink it into an unreadable sliver.
-      const image = node.querySelector("img");
+      const image = pictureCapTarget(node);
       if (image) {
-        const height = image.getBoundingClientRect().height;
+        const height = pictureHeight(node);
         const available = height + room;
         if (available >= Math.max(lineHeight * 3, height * .45) && available < height) {
           const previous = image.style.getPropertyValue("--img-cap");

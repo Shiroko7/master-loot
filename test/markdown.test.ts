@@ -21,8 +21,13 @@ class MockElement {
   type = "";
   disabled = false;
   checked = false;
-  style: Record<string, string> = {};
+  style: Record<string, any> = {
+    setProperty: (name: string, value: string) => { this.style[name] = value; },
+  };
   children: (MockElement | MockTextNode)[] = [];
+
+  addEventListener() {}
+  querySelector() { return null; }
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
@@ -49,6 +54,7 @@ class MockElement {
       cls.forEach((c) => set.delete(c));
       this.className = [...set].join(" ");
     },
+    contains: (cls: string) => this.className.split(" ").includes(cls),
   };
 
   setAttribute(name: string, val: string) {
@@ -95,6 +101,9 @@ import {
   renderMarkdownInto,
   parseFigureSpec,
   splitOutsideInserts,
+  splitTableRow,
+  parsePictureRow,
+  collectPictureRows,
 } from "../src/markdown";
 
 test("isSafeUrl: validates safe web and mailto protocols and blocks dangerous ones", () => {
@@ -480,4 +489,61 @@ test("splitOutsideInserts: page breaks inside an insert stay part of it", () => 
   const isBreak = (line: string) => line.trim() === "---";
   assert.deepEqual(splitOutsideInserts("a\n---\n:::\nb\n---\nc\n:::\n---\nd", isBreak),
     ["a", ":::\nb\n---\nc\n:::", "d"]);
+});
+
+test("splitTableRow: pipes inside a picture are its options, not cell borders", () => {
+  assert.deepEqual(splitTableRow("| ![Gate|small](a.png) | text |"), ["![Gate|small](a.png)", "text"]);
+  assert.deepEqual(splitTableRow("a|b|c"), ["a", "b", "c"]);
+});
+
+test("parsePictureRow: only lines made of pictures separated by pipes", () => {
+  assert.deepEqual(parsePictureRow("![A|photo](a.png) | ![B](b.png)"), [
+    { alt: "A|photo", url: "a.png" },
+    { alt: "B", url: "b.png" },
+  ]);
+  assert.equal(parsePictureRow("![A](a.png)")?.length, 1);
+  assert.equal(parsePictureRow("![A](a.png) and words"), null);
+  assert.equal(parsePictureRow("![A](a.png) | words"), null);
+  assert.equal(parsePictureRow("plain | table"), null);
+});
+
+test("collectPictureRows: needs one row of two or more, and never takes a real table", () => {
+  const grid = collectPictureRows(["![a](a)|![b](b)", "![c](c)", "after"], 0);
+  assert.deepEqual(grid?.rows.map((row) => row.length), [2, 1]);
+  assert.equal(grid?.end, 2);
+  assert.equal(collectPictureRows(["![a](a)", "![c](c)"], 0), null);
+  assert.equal(collectPictureRows(["| ![a](a) | ![b](b) |", "|---|---|", "| x | y |"], 0), null);
+});
+
+test("renderMarkdownInto: picture rows become a side-by-side grid", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement,
+    "Intro.\n![A](a.png) | ![B|40%](b.png)\n![C](c.png)\nOutro.");
+  const kinds = target.children.map((child) => (child as MockElement).className);
+  assert.deepEqual(kinds, ["", "md-gallery", ""]);
+  const grid = target.children[1] as MockElement;
+  assert.equal(grid.style["--gallery-rows"], "2");
+  const rows = grid.children as MockElement[];
+  assert.deepEqual(rows.map((row) => row.children.length), [2, 1]);
+  const [a, b] = rows[0].children as MockElement[];
+  assert.ok(a.className.includes("md-gallery-item"));
+  assert.ok(b.className.includes("md-figure-custom"), "a |NN% share is kept");
+});
+
+test("renderMarkdownInto: a picture alone in a table cell fills the cell", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement,
+    "| Map | Notes |\n|---|---|\n| ![Keep|small](k.png) | Ruined |");
+  const table = target.children[0] as MockElement;
+  assert.equal(table.tagName, "TABLE");
+  const cell = ((table.children[1] as MockElement).children[0] as MockElement).children[0] as MockElement;
+  const figure = cell.children[0] as MockElement;
+  assert.equal(figure.tagName, "FIGURE");
+  assert.ok(figure.className.includes("md-figure-cell"));
+});
+
+test("renderMarkdownInto: a stray | line is a paragraph, not an endless loop", () => {
+  const target = new MockElement("div");
+  renderMarkdownInto(target as unknown as HTMLElement, "| one\n| two");
+  assert.equal((target.children[0] as MockElement).tagName, "P");
 });

@@ -373,6 +373,32 @@ The Townmaster has convened an emergency council meeting.`,
   }
 });
 
+test("Newspaper pictures: `|`-separated picture lines print side by side as one grid", () => {
+  const doc: LootDocument = {
+    style: "newspaper",
+    title: "The Sword Coast Inquirer",
+    content: `# TWIN BEACONS LIT
+
+The towers answered each other at dusk.
+
+![North tower|sepia](https://example.com/north.jpg) | ![South tower](https://example.com/south.jpg)
+![The harbor between them|wide](https://example.com/harbor.jpg)
+
+Sailors cheered from the quay.`,
+  };
+
+  const [page] = parseNewspaperPages(doc);
+  assert.deepEqual(page.blocks.map((block) => block.kind), ["paragraph", "gallery", "paragraph"]);
+  const gallery = page.blocks[1];
+  if (gallery.kind === "gallery") {
+    assert.deepEqual(gallery.rows.map((row) => row.map((img) => img.caption)),
+      [["North tower", "South tower"], ["The harbor between them"]]);
+    assert.equal(gallery.rows[0][0].filter, "sepia");
+    assert.equal(gallery.rows[1][0].width, "page");
+  }
+  assert.equal(page.images.length, 3, "grid pictures belong to the story");
+});
+
 test("Newspaper header styles: registration, metadata, and default initialization", () => {
   assert.ok(NEWSPAPER_HEADER_STYLES.length >= 5);
   assert.ok(NEWSPAPER_HEADER_STYLES.includes("tabloid-splash"));

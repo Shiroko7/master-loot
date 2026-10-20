@@ -25,6 +25,7 @@ import { createDocumentReader, type DocumentReader } from "./documentReader";
 import { createNewspaperLayoutPicker } from "./newspaperLayoutPicker";
 import { createNewspaperHeaderFields } from "./newspaperHeaderFields";
 import { createNewspaperImageManager } from "./newspaperImageManager";
+import { enableImageLightbox } from "./imageLightbox";
 import { MUSIC_PLACEHOLDER, createMusicGuide } from "./musicGuide";
 import { MUSIC_EXAMPLE, MUSIC_RENDER_EVENT, type MusicRenderDetail } from "./musicSheet";
 import { getBackup } from "./storage";
@@ -914,6 +915,7 @@ function renderPictureDetail(item: LootItem): void {
   const wrap = el("div", "preview-wrap");
   const stage = el("div", "paper-stage");
   stage.style.setProperty("--zoom", "0.7");
+  enableImageLightbox(stage);
   wrap.append(stage);
   const refreshPreview = () => renderPicture(stage, item);
 
@@ -1150,6 +1152,7 @@ function buildPictureHelp(isNewspaper: boolean): HTMLElement {
     example("![Caption|column](link)", "Stays inside one reading column (the default)");
     example("![Caption|auto|wide](link)", "Options combine: placed automatically, spanning both columns");
     example("![Caption|engraving](link)", "Print look: halftone, engraving, sepia, color-press or raw");
+    example("![A](link) | ![B](link)", "Side by side in one column; add |wide to either one and the row spans both columns");
   } else {
     example("![Caption](link)", "On its own line: large and centered, caption underneath");
     example("![|left](link) Your text…", "Inside a sentence: small, text wraps around it");
@@ -1158,12 +1161,14 @@ function buildPictureHelp(isNewspaper: boolean): HTMLElement {
     example("![Caption|60%](link)", "Exact width: 60% of the text width (5–100%), bigger or smaller than the sizes");
     example("![Caption|fit](link)", "Shrink to fit: the whole picture always fits on one page");
     example("![|page](link)", "Full page: the picture replaces a whole page (add |fit to avoid cropping)");
+    example("![A](link) | ![B](link)", "Side by side, sharing the width by their proportions; each line is a new row");
   }
 
   const tip = el("p", "doc-picture-help-text");
   tip.textContent =
     "The caption is optional; settings go after | in any order. " +
-    "Check the result in the Style tab preview.";
+    "Check the result in the Style tab preview. Readers can click any " +
+    "picture to see it at full resolution.";
   box.append(tip);
   return box;
 }
@@ -1675,6 +1680,7 @@ function renderStyleTab(item: LootItem, doc: LootDocument): void {
   const wrap = el("div", "preview-wrap");
   const stage = el("div", "paper-stage");
   stage.style.setProperty("--zoom", doc.style === "music" ? MUSIC_PREVIEW_ZOOM : "0.95");
+  enableImageLightbox(stage);
   renderDocument(stage, doc);
   wrap.append(stage);
   detailEl.append(row);
