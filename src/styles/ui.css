@@ -981,6 +981,18 @@ textarea.music-source {
   display: none;
 }
 
+/* Write / Style / Preview stay in reach while scrolling a long document,
+   so switching tabs never sends the GM back to the top. */
+.editor-detail > .tabs {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  margin: -14px -16px 12px;
+  padding: 10px 16px 8px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-soft);
+}
+
 .tabs .tab-preview {
   margin-left: auto;
 }

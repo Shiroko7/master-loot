@@ -108,6 +108,111 @@ function selected(): LootItem | undefined {
   return loot.items.find((i) => i.id === selectedId);
 }
 
+// --- where the GM left off -------------------------------------------------
+
+/*
+ * The detail pane is rebuilt on many edits (tabs, styles, pictures), and
+ * the editor itself is a fresh page every time it opens. Each item keeps
+ * the GM's place: the content box's scroll and cursor, and the pane's
+ * scroll on each tab. Kept per browser, so reopening the editor (or
+ * coming back from another item) lands where they were.
+ */
+interface EditorSpot {
+  /** Per token only: the item and tab last open, and the list's scroll. */
+  item?: string;
+  tab?: string;
+  list?: number;
+  /** Content box: scroll offset and selection. */
+  text?: { top: number; start: number; end: number };
+  /** Detail pane scroll offset, per tab. */
+  pane: Record<string, number>;
+  at: number;
+}
+
+const SPOTS_KEY = "master-loot:editor-spots";
+const MAX_SPOTS = 60;
+const spots = readSpots();
+/** The item, tab and content box the pane currently shows. */
+let shown: { key: string; tab: string; content: HTMLTextAreaElement | null } | null = null;
+let spotsTimer: number | undefined;
+
+function readSpots(): Record<string, EditorSpot> {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(SPOTS_KEY) ?? "{}");
+    return raw && typeof raw === "object" ? (raw as Record<string, EditorSpot>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSpots(): void {
+  window.clearTimeout(spotsTimer);
+  spotsTimer = undefined;
+  // Keep only the most recently visited items.
+  const keys = Object.keys(spots).sort((a, b) => spots[b].at - spots[a].at);
+  for (const key of keys.slice(MAX_SPOTS)) delete spots[key];
+  try {
+    localStorage.setItem(SPOTS_KEY, JSON.stringify(spots));
+  } catch {
+    // Convenience only; the editor works the same without it.
+  }
+}
+
+/** Notes where the GM is in the pane right now (before it is rebuilt). */
+function rememberSpot(): void {
+  if (!shown || !detailEl) return;
+  const spot = (spots[shown.key] ??= { pane: {}, at: 0 });
+  spot.pane[shown.tab] = detailEl.scrollTop;
+  const content = shown.content;
+  if (content?.isConnected) {
+    spot.text = { top: content.scrollTop, start: content.selectionStart, end: content.selectionEnd };
+  }
+  spot.at = Date.now();
+  spotsTimer ??= window.setTimeout(writeSpots, 400);
+}
+
+/** Notes which item and tab are open, and how far the list is scrolled. */
+function rememberView(): void {
+  const view = (spots[tokenId] ??= { pane: {}, at: 0 });
+  view.item = selectedId ?? undefined;
+  view.tab = detailTab;
+  view.list = app.querySelector(".editor-list")?.scrollTop ?? view.list;
+  view.at = Date.now();
+  spotsTimer ??= window.setTimeout(writeSpots, 400);
+}
+
+/** On opening: the item and tab the GM had open last time, if still there. */
+function restoreView(): void {
+  const view = spots[tokenId];
+  if (!view?.item || !loot.items.some((item) => item.id === view.item)) return;
+  selectedId = view.item;
+  detailTab = view.tab === "style" ? "style" : "write";
+}
+
+/** After the pane is built: return to the GM's place in this item. */
+function restoreSpot(item: LootItem): void {
+  const key = `${tokenId}:${item.id}`;
+  const content = detailEl.querySelector<HTMLTextAreaElement>("textarea.doc-content");
+  shown = { key, tab: item.kind === "document" ? detailTab : "detail", content };
+  const spot = spots[key];
+  const apply = () => {
+    if (shown?.key !== key) return;
+    if (content && spot?.text) {
+      const length = content.value.length;
+      content.setSelectionRange(Math.min(spot.text.start, length), Math.min(spot.text.end, length));
+      content.scrollTop = spot.text.top;
+    }
+    detailEl.scrollTop = spot?.pane[shown.tab] ?? 0;
+  };
+  apply();
+  // Previews and pictures settle a frame later and may lengthen the pane.
+  requestAnimationFrame(apply);
+  content?.addEventListener("scroll", rememberSpot, { passive: true });
+  content?.addEventListener("select", rememberSpot);
+  content?.addEventListener("keyup", rememberSpot);
+  content?.addEventListener("pointerup", rememberSpot);
+}
+
 // --- persistence -----------------------------------------------------------
 
 /*
@@ -305,6 +410,7 @@ function buildShell(): void {
   const main = el("div", "editor-main");
 
   const listPane = el("div", "editor-list");
+  listPane.addEventListener("scroll", rememberView, { passive: true });
   listEl = el("div", "loot-list");
   // Dropping on the empty space below the slots un-files a dragged item.
   listEl.ondragover = (event) => {
@@ -360,6 +466,7 @@ function buildShell(): void {
   listPane.append(addRow, buildImportRow(), listEl);
 
   detailEl = el("div", "editor-detail");
+  detailEl.addEventListener("scroll", rememberSpot, { passive: true });
   main.append(listPane, detailEl);
 
   panel.append(header, main);
@@ -722,7 +829,10 @@ function renderList(): void {
 // --- detail pane -------------------------------------------------------------
 
 function renderDetail(): void {
+  rememberSpot();
+  shown = null;
   detailEl.innerHTML = "";
+  rememberView();
   if (pendingImport) {
     renderImportPreview(pendingImport);
     return;
@@ -759,6 +869,7 @@ function renderDetail(): void {
     renderDetail();
   };
   detailEl.append(remove);
+  restoreSpot(item);
 }
 
 function commonFields(item: LootItem): HTMLElement {
@@ -1209,10 +1320,15 @@ function buildDocumentSyntaxGuide(
     const selected = current.substring(start, end);
     const middle = selected || defaultText;
     const replacement = `${prefix}${middle}${suffix}`;
-    contentInput.value = current.substring(0, start) + replacement + current.substring(end);
-    contentInput.focus();
-    contentInput.selectionStart = start + prefix.length;
-    contentInput.selectionEnd = start + prefix.length + middle.length;
+    // Replacing the whole value would jump the box (and the pane, on
+    // focus) back to the top; edit in place and keep both where they were.
+    const textTop = contentInput.scrollTop;
+    const paneTop = detailEl.scrollTop;
+    contentInput.setRangeText(replacement, start, end);
+    contentInput.focus({ preventScroll: true });
+    contentInput.setSelectionRange(start + prefix.length, start + prefix.length + middle.length);
+    contentInput.scrollTop = textTop;
+    detailEl.scrollTop = paneTop;
     contentInput.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
@@ -1444,7 +1560,7 @@ function renderDocumentDetail(item: LootItem): void {
     detailEl.append(createNewspaperImageManager(doc, markDirty));
   }
 
-  const contentInput = el("textarea");
+  const contentInput = el("textarea", "doc-content");
   contentInput.value = doc.content;
   contentInput.maxLength = MAX_DOC_CHARS;
   contentInput.rows = 12;
@@ -1730,6 +1846,8 @@ function maybeShowRestore(hadLoot: boolean): void {
 // Choosing "Close without saving" on ✕ clears `dirty` first, so an explicit
 // discard is still respected.
 window.addEventListener("pagehide", () => {
+  rememberSpot();
+  writeSpots();
   if (dirty) void saveNow();
 });
 
@@ -1772,8 +1890,8 @@ function closeQuickPreview(): void {
   const { el: overlay, returnFocus } = quickPreview;
   overlay.remove();
   quickPreview = null;
-  // Back to the textarea with the cursor where it was.
-  if (returnFocus instanceof HTMLElement) returnFocus.focus();
+  // Back to the textarea with the cursor (and the scroll) where it was.
+  if (returnFocus instanceof HTMLElement) returnFocus.focus({ preventScroll: true });
 }
 
 document.addEventListener("keydown", (event) => {
@@ -1832,8 +1950,11 @@ OBR.onReady(async () => {
   loot = existing
     ? structuredClone(existing)
     : createContainer(token.name || "Loot");
+  restoreView();
   buildShell();
   renderList();
+  const list = app.querySelector(".editor-list");
+  if (list) list.scrollTop = spots[tokenId]?.list ?? 0;
   renderDetail();
   maybeShowRestore(existing !== undefined);
 });
